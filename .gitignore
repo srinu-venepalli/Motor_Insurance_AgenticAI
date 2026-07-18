@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Env / secrets
+.env
+
+# Local dev DB
+local.db
+*.sqlite3
+
+# Vector store persistence / large data
+data/*
+!data/.gitkeep
+
+# Test artifacts
+.pytest_cache/
+

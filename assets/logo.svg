@@ -1,0 +1,25 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Shield -->
+  <path d="M60 6 L104 22 V56 C104 84 86 104 60 114 C34 104 16 84 16 56 V22 Z"
+        fill="#2F6FED"/>
+  <path d="M60 14 L96 27 V56 C96 79 81 96 60 105 C39 96 24 79 24 56 V27 Z"
+        fill="#EAF1FF"/>
+
+  <!-- Car silhouette -->
+  <g transform="translate(28, 50)">
+    <path d="M6 24 L10 10 C11 6 15 4 19 4 H45 C49 4 53 6 54 10 L58 24 Z"
+          fill="#2F6FED"/>
+    <rect x="2" y="22" width="60" height="14" rx="6" fill="#2F6FED"/>
+    <circle cx="16" cy="38" r="7" fill="#1A1D23"/>
+    <circle cx="48" cy="38" r="7" fill="#1A1D23"/>
+    <circle cx="16" cy="38" r="3" fill="#EAF1FF"/>
+    <circle cx="48" cy="38" r="3" fill="#EAF1FF"/>
+    <rect x="18" y="10" width="10" height="9" rx="2" fill="#EAF1FF"/>
+    <rect x="34" y="10" width="10" height="9" rx="2" fill="#EAF1FF"/>
+  </g>
+
+  <!-- Checkmark badge -->
+  <circle cx="90" cy="88" r="14" fill="#22C55E" stroke="#FFFFFF" stroke-width="3"/>
+  <path d="M84 88 L88 92 L96 83" fill="none" stroke="#FFFFFF" stroke-width="3"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
