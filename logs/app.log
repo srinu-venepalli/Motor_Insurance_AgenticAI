@@ -373,3 +373,137 @@
 2026-07-19 11:59:30,613 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/1 -> 200 (2030.6ms)
 2026-07-19 11:59:34,664 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
 2026-07-19 11:59:34,667 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/chat -> 200 (4046.5ms)
+2026-07-19 12:03:29,417 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2129.1ms)
+2026-07-19 12:03:37,641 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2047.1ms)
+2026-07-19 12:03:39,733 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2048.8ms)
+2026-07-19 12:03:41,799 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/22 -> 200 (2063.5ms)
+2026-07-19 12:03:43,057 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2040.6ms)
+2026-07-19 12:03:45,107 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/22 -> 200 (2047.7ms)
+2026-07-19 12:03:47,161 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/21 -> 200 (2048.9ms)
+2026-07-19 12:03:49,212 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/20 -> 200 (2047.5ms)
+2026-07-19 12:03:51,233 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/19 -> 200 (2017.1ms)
+2026-07-19 12:03:53,299 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/18 -> 200 (2063.1ms)
+2026-07-19 12:03:55,368 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/4 -> 200 (2064.2ms)
+2026-07-19 12:03:57,421 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/3 -> 200 (2045.7ms)
+2026-07-19 12:03:59,471 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/2 -> 200 (2044.3ms)
+2026-07-19 12:04:01,544 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/1 -> 200 (2068.2ms)
+2026-07-19 12:04:22,615 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2056.1ms)
+2026-07-19 12:04:24,671 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/22 -> 200 (2053.6ms)
+2026-07-19 12:04:26,714 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/21 -> 200 (2038.6ms)
+2026-07-19 12:04:28,753 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/20 -> 200 (2034.6ms)
+2026-07-19 12:04:30,801 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/19 -> 200 (2039.9ms)
+2026-07-19 12:04:32,857 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/18 -> 200 (2052.3ms)
+2026-07-19 12:04:34,935 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/4 -> 200 (2073.0ms)
+2026-07-19 12:04:36,988 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/3 -> 200 (2049.9ms)
+2026-07-19 12:04:39,042 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/2 -> 200 (2050.7ms)
+2026-07-19 12:04:41,125 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/1 -> 200 (2078.4ms)
+2026-07-19 12:04:45,788 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:04:47,117 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:04:47,121 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/chat -> 200 (5990.1ms)
+2026-07-19 12:05:29,271 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2032.8ms)
+2026-07-19 12:06:18,076 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2044.2ms)
+2026-07-19 12:06:20,163 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2046.1ms)
+2026-07-19 12:07:18,284 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2046.8ms)
+2026-07-19 12:07:29,642 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2039.8ms)
+2026-07-19 12:07:31,741 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2055.7ms)
+2026-07-19 12:10:48,018 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2106.0ms)
+2026-07-19 12:10:57,065 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2026.1ms)
+2026-07-19 12:10:59,164 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2048.0ms)
+2026-07-19 12:11:13,888 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2040.8ms)
+2026-07-19 12:11:24,129 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2058.4ms)
+2026-07-19 12:11:26,247 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2078.7ms)
+2026-07-19 12:12:08,338 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2049.7ms)
+2026-07-19 12:12:17,013 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2037.7ms)
+2026-07-19 12:12:19,120 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2066.8ms)
+2026-07-19 12:12:39,092 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2014.3ms)
+2026-07-19 12:12:49,513 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2057.8ms)
+2026-07-19 12:12:51,608 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2050.6ms)
+2026-07-19 12:12:57,261 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2035.2ms)
+2026-07-19 12:19:49,414 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2130.5ms)
+2026-07-19 12:20:04,163 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2028.3ms)
+2026-07-19 12:20:06,280 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2057.1ms)
+2026-07-19 12:20:31,989 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2057.1ms)
+2026-07-19 12:20:36,862 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:20:38,281 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:20:38,285 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/chat -> 200 (6289.1ms)
+2026-07-19 12:20:53,538 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2029.6ms)
+2026-07-19 12:21:04,113 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2050.5ms)
+2026-07-19 12:21:06,197 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2037.2ms)
+2026-07-19 12:21:30,821 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2040.0ms)
+2026-07-19 12:21:34,664 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:21:34,752 | INFO     | pinecone.client.indexes | Describing index 'policies'
+2026-07-19 12:21:36,517 | INFO     | httpx | HTTP Request: GET https://api.pinecone.io/indexes/policies "HTTP/1.1 200 OK"
+2026-07-19 12:21:36,538 | INFO     | pinecone.index | Index client created for host https://policies-r1zzu8l.svc.aped-4627-b74a.pinecone.io
+2026-07-19 12:21:38,122 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/embeddings "HTTP/1.1 200 OK"
+2026-07-19 12:21:38,304 | INFO     | pinecone.index | Querying index with top_k=5
+2026-07-19 12:21:41,261 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:21:41,264 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/chat -> 200 (10438.2ms)
+2026-07-19 12:22:08,164 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2071.1ms)
+2026-07-19 12:22:12,154 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:22:13,786 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:22:13,788 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/chat -> 200 (5619.7ms)
+2026-07-19 12:22:30,674 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2039.1ms)
+2026-07-19 12:22:35,055 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:22:35,071 | INFO     | customer_support_agent.core.tracing | LangSmith tracing enabled (project=motor-insurance-support-agent)
+2026-07-19 12:22:36,228 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:22:36,230 | INFO     | customer_support_agent.graph.nodes | classify_ticket: raw_response='{"category": "renewal"}' -> category=renewal
+2026-07-19 12:22:37,752 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:22:39,431 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:22:41,311 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:22:42,837 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:22:42,840 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/chat -> 200 (12159.8ms)
+2026-07-19 12:23:02,109 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2037.5ms)
+2026-07-19 12:23:24,771 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2128.6ms)
+2026-07-19 12:23:37,897 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2035.1ms)
+2026-07-19 12:23:42,933 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2060.2ms)
+2026-07-19 12:23:45,030 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2054.0ms)
+2026-07-19 12:23:47,071 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/23 -> 200 (2032.2ms)
+2026-07-19 12:23:49,136 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2058.8ms)
+2026-07-19 12:24:09,365 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2052.5ms)
+2026-07-19 12:24:11,430 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/23 -> 200 (2056.6ms)
+2026-07-19 12:24:15,238 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:24:15,240 | INFO     | customer_support_agent.graph.nodes | classify_ticket: raw_response='{"category": "renewal"}' -> category=renewal
+2026-07-19 12:24:16,534 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:24:18,804 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:24:18,826 | INFO     | pinecone.index | Index client created for host https://policies-r1zzu8l.svc.aped-4627-b74a.pinecone.io
+2026-07-19 12:24:20,182 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/embeddings "HTTP/1.1 200 OK"
+2026-07-19 12:24:20,236 | INFO     | pinecone.index | Querying index with top_k=5
+2026-07-19 12:24:25,243 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:24:27,623 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:24:27,632 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/tickets/23/process -> 200 (16196.7ms)
+2026-07-19 12:24:29,714 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2037.9ms)
+2026-07-19 12:24:31,763 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/23 -> 200 (2040.0ms)
+2026-07-19 12:24:33,821 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2048.7ms)
+2026-07-19 12:24:51,329 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2048.5ms)
+2026-07-19 12:24:53,367 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/23 -> 200 (2028.6ms)
+2026-07-19 12:24:55,414 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/tickets/23/approve -> 200 (2039.7ms)
+2026-07-19 12:24:57,494 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2040.5ms)
+2026-07-19 12:24:59,552 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/23 -> 200 (2048.6ms)
+2026-07-19 12:25:01,608 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2050.9ms)
+2026-07-19 12:25:20,801 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2052.0ms)
+2026-07-19 12:25:24,648 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:25:26,184 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:25:26,187 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/chat -> 200 (5377.0ms)
+2026-07-19 12:25:47,737 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2032.1ms)
+2026-07-19 12:26:10,135 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/tickets -> 201 (2051.7ms)
+2026-07-19 12:26:14,256 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:26:14,258 | INFO     | customer_support_agent.graph.nodes | classify_ticket: raw_response='{"category": "coverage_question"}' -> category=coverage_question
+2026-07-19 12:26:15,710 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:26:15,731 | INFO     | pinecone.index | Index client created for host https://policies-r1zzu8l.svc.aped-4627-b74a.pinecone.io
+2026-07-19 12:26:17,213 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/embeddings "HTTP/1.1 200 OK"
+2026-07-19 12:26:17,232 | INFO     | pinecone.index | Querying index with top_k=5
+2026-07-19 12:26:20,793 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:26:23,357 | INFO     | httpx | HTTP Request: POST https://openai.vocareum.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 12:26:23,375 | INFO     | ui.api_client | UI -> API POST http://localhost:8000/tickets/24/process -> 200 (13237.8ms)
+2026-07-19 12:26:25,413 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2033.0ms)
+2026-07-19 12:26:38,304 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2044.4ms)
+2026-07-19 12:26:42,136 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2032.5ms)
+2026-07-19 12:26:44,220 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2042.9ms)
+2026-07-19 12:26:46,265 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/12 -> 200 (2035.3ms)
+2026-07-19 12:26:48,321 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2048.3ms)
+2026-07-19 12:28:15,430 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/customers -> 200 (2046.3ms)
+2026-07-19 12:28:24,827 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2035.6ms)
+2026-07-19 12:28:28,784 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2037.9ms)
+2026-07-19 12:28:30,863 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2041.5ms)
+2026-07-19 12:28:32,969 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets/24 -> 200 (2075.8ms)
+2026-07-19 12:28:35,052 | INFO     | ui.api_client | UI -> API GET http://localhost:8000/tickets -> 200 (2077.1ms)

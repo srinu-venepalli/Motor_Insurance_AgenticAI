@@ -106,14 +106,22 @@ def main() -> None:
         _login_form(placeholder)
         return
 
-    if st.session_state["role"] == "customer":
-        from ui import customer_portal
+    # Same placeholder pattern as _login_form's transition, applied in the
+    # other direction: passed down so each portal's logout button can
+    # explicitly clear this before rerunning, instead of relying on
+    # Streamlit's automatic diffing (which was causing the portal to
+    # visibly linger for a moment while the login form was already
+    # rendering underneath it).
+    placeholder = st.empty()
+    with placeholder.container():
+        if st.session_state["role"] == "customer":
+            from ui import customer_portal
 
-        customer_portal.render()
-    else:
-        from ui import agent_console
+            customer_portal.render(placeholder)
+        else:
+            from ui import agent_console
 
-        agent_console.render()
+            agent_console.render(placeholder)
 
 
 if __name__ == "__main__":

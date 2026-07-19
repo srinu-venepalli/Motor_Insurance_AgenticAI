@@ -11,7 +11,9 @@ from ui import api_client
 from ui.theme import render_header, status_pill
 
 
-def _logout():
+def _logout(placeholder=None):
+    if placeholder is not None:
+        placeholder.empty()
     st.session_state.clear()
     st.rerun()
 
@@ -71,31 +73,24 @@ def _render_previous_tickets_accordion(customer_id: int, current_ticket_id: int)
             f"{t['category'].replace('_', ' ').title()} \u00b7 {label}"
         )
         with st.expander(header):
-            try:
-                other_detail = api_client.get_ticket(t["ticket_id"])
-            except api_client.ApiError as exc:
-                st.caption(f"Couldn't load detail: {exc}")
-                continue
-
-            other_customer_msgs = [m for m in other_detail["messages"] if m["sender"] == "customer"]
-            other_human_msgs = [m for m in other_detail["messages"] if m["sender"] == "human_agent"]
-
-            if other_customer_msgs:
+            # Uses fields already included in the (batched) list_tickets
+            # response -- no separate GET /tickets/{id} call per ticket.
+            if t.get("customer_message"):
                 st.caption("Customer asked:")
-                st.write(other_customer_msgs[0]["text"])
+                st.write(t["customer_message"])
 
-            if other_detail["interactions"]:
+            if t.get("latest_summary"):
                 st.caption("AI summary (internal):")
-                st.write(other_detail["interactions"][-1]["summary"])
+                st.write(t["latest_summary"])
 
-            if other_human_msgs:
+            if t.get("response_sent"):
                 st.caption("Response sent:")
-                st.success(other_human_msgs[-1]["text"])
+                st.success(t["response_sent"])
             else:
                 st.caption("(No response sent yet -- still open or escalated.)")
 
 
-def render() -> None:
+def render(placeholder=None) -> None:
     agent_name = st.session_state.get("agent_name", "Agent")
     agent_role = st.session_state.get("agent_role", "support_agent")
     is_supervisor = agent_role == "supervisor"
@@ -103,7 +98,7 @@ def render() -> None:
     render_header(
         title="Agent Console",
         subtitle=f"Signed in as {agent_name} ({agent_role.replace('_', ' ')})",
-        on_logout=_logout,
+        on_logout=lambda: _logout(placeholder),
     )
 
     col_filter, col_refresh = st.columns([3, 1])

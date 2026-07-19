@@ -22,19 +22,21 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
-def _logout():
+def _logout(placeholder=None):
+    if placeholder is not None:
+        placeholder.empty()
     st.session_state.clear()
     st.rerun()
 
 
-def render() -> None:
+def render(placeholder=None) -> None:
     customer_id = st.session_state["customer_id"]
     customer_name = st.session_state.get("customer_name", f"Customer #{customer_id}")
 
     render_header(
         title="Motor Insurance Support",
         subtitle=f"Welcome back, {customer_name}",
-        on_logout=_logout,
+        on_logout=lambda: _logout(placeholder),
     )
 
     tab_new, tab_history, tab_chat = st.tabs(["New Ticket", "My Tickets", "AI Assistant"])
@@ -83,64 +85,68 @@ def render() -> None:
             tickets = api_client.list_tickets(customer_id=customer_id)
         except api_client.ApiError as exc:
             st.error(f"Couldn't load your tickets: {exc}")
-            return
+            tickets = None
 
-        if not tickets:
+        # No bare `return` here -- this is inside `with tab_history:`, but a
+        # `return` still exits the whole render() function, silently
+        # skipping tab_chat's code entirely (it's written after this tab in
+        # the file, and Streamlit runs every tab's body every rerun
+        # regardless of which one is visually active). That was the actual
+        # bug: a customer with zero tickets, or a failed fetch, meant the
+        # "AI Assistant" tab never rendered at all.
+        if tickets is None:
+            pass  # error already shown above
+        elif not tickets:
             st.info("You haven't submitted any tickets yet.")
-            return
+        else:
+            # Position within THIS customer's own history (1st, 2nd, ...) --
+            # purely a friendly label shown alongside the real ticket ID,
+            # never replacing it. The real ID stays the single source of
+            # truth (it's what the Agent Console uses too), computed from
+            # this customer's tickets in the order they were actually
+            # opened, independent of whatever order the list renders in.
+            chronological = sorted(tickets, key=lambda t: t["ticket_id"])
+            sequence_number = {t["ticket_id"]: i + 1 for i, t in enumerate(chronological)}
 
-        # Position within THIS customer's own history (1st, 2nd, ...) --
-        # purely a friendly label shown alongside the real ticket ID, never
-        # replacing it. The real ID stays the single source of truth (it's
-        # what the Agent Console uses too), computed from this customer's
-        # tickets in the order they were actually opened, independent of
-        # whatever order the list happens to render in.
-        chronological = sorted(tickets, key=lambda t: t["ticket_id"])
-        sequence_number = {t["ticket_id"]: i + 1 for i, t in enumerate(chronological)}
-
-        for t in tickets:
-            if t["status"] == "closed":
-                if t.get("resolution") == "rejected":
-                    kind, label = "rejected", "Rejected"
+            for t in tickets:
+                if t["status"] == "closed":
+                    if t.get("resolution") == "rejected":
+                        kind, label = "rejected", "Rejected"
+                    else:
+                        kind, label = "closed", "Approved"
+                elif t.get("escalated"):
+                    kind, label = "escalated", "With a specialist"
                 else:
-                    kind, label = "closed", "Approved"
-            elif t.get("escalated"):
-                kind, label = "escalated", "With a specialist"
-            else:
-                kind, label = "open", "Under review"
+                    kind, label = "open", "Under review"
 
-            seq = sequence_number.get(t["ticket_id"])
-            seq_label = f" (your {_ordinal(seq)} ticket)" if seq else ""
+                seq = sequence_number.get(t["ticket_id"])
+                seq_label = f" (your {_ordinal(seq)} ticket)" if seq else ""
 
-            with st.expander(
-                f"Ticket #{t['ticket_id']}{seq_label} \u2014 {t['category'].replace('_', ' ').title()}",
-                expanded=(t["ticket_id"] == st.session_state.get("_just_submitted")),
-            ):
-                st.markdown(status_pill(label, kind), unsafe_allow_html=True)
-                st.write("")
+                with st.expander(
+                    f"Ticket #{t['ticket_id']}{seq_label} \u2014 {t['category'].replace('_', ' ').title()}",
+                    expanded=(t["ticket_id"] == st.session_state.get("_just_submitted")),
+                ):
+                    st.markdown(status_pill(label, kind), unsafe_allow_html=True)
+                    st.write("")
 
-                try:
-                    detail = api_client.get_ticket(t["ticket_id"])
-                except api_client.ApiError as exc:
-                    st.error(f"Couldn't load ticket detail: {exc}")
-                    continue
-
-                for msg in detail["messages"]:
-                    if msg["sender"] == "customer":
+                    # Uses fields already included in the (batched)
+                    # list_tickets response -- no separate GET
+                    # /tickets/{id} call per ticket. That used to mean N
+                    # full HTTP round-trips for N tickets, which was the
+                    # actual cause of "My Tickets" feeling slow.
+                    if t.get("customer_message"):
                         with st.chat_message("user"):
-                            st.write(msg["text"])
-                    elif msg["sender"] == "human_agent":
-                        with st.chat_message("assistant"):
-                            st.write(msg["text"])
-                    # ai_draft messages are intentionally not shown here --
-                    # unapproved drafts are agent-console-only.
+                            st.write(t["customer_message"])
 
-                if t["status"] != "closed":
-                    with st.chat_message("assistant"):
-                        st.write(
-                            "Thanks for reaching out \u2014 our support team is reviewing "
-                            "your request and will respond shortly."
-                        )
+                    if t["status"] == "closed" and t.get("response_sent"):
+                        with st.chat_message("assistant"):
+                            st.write(t["response_sent"])
+                    elif t["status"] != "closed":
+                        with st.chat_message("assistant"):
+                            st.write(
+                                "Thanks for reaching out \u2014 our support team is "
+                                "reviewing your request and will respond shortly."
+                            )
 
     with tab_chat:
         st.write(

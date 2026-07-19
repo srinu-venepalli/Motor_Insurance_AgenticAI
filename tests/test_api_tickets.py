@@ -405,6 +405,47 @@ def test_list_tickets_rejects_invalid_resolution_filter(client):
     assert response.status_code == 422
 
 
+def test_list_tickets_includes_customer_message_and_response_sent(client, session, monkeypatch):
+    """This is the actual fix verification: the list response must include
+    enough (customer_message, response_sent) that the UI never needs a
+    separate GET /tickets/{id} call per ticket, which was the real N+1
+    performance problem."""
+    customer = _seed_customer(session)
+    create_resp = client.post(
+        "/tickets", json={"customer_id": customer.id, "ticket_text": "Cracked windscreen?"}
+    )
+    ticket_id = create_resp.json()["ticket_id"]
+
+    monkeypatch.setattr(tickets_module, "build_graph", lambda db: FakeGraph(FIXED_RESULT))
+    client.post(f"/tickets/{ticket_id}/process")
+    client.post(f"/tickets/{ticket_id}/approve", json={"resolution": "approved"})
+
+    listed = client.get("/tickets").json()
+    this_ticket = next(t for t in listed if t["ticket_id"] == ticket_id)
+
+    assert this_ticket["customer_message"] == "Cracked windscreen?"
+    assert this_ticket["response_sent"] is not None  # the approved draft text
+    assert "Yes, covered." in this_ticket["response_sent"]
+
+
+def test_list_tickets_batches_queries_regardless_of_ticket_count(client, session):
+    """Not a query-count assertion (that'd be brittle against the ORM's
+    internals) -- just confirms a larger number of tickets still returns
+    correctly and quickly with the batched implementation."""
+    customer = _seed_customer(session)
+    for i in range(15):
+        client.post(
+            "/tickets", json={"customer_id": customer.id, "ticket_text": f"Ticket {i}"}
+        )
+
+    response = client.get(f"/tickets?customer_id={customer.id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 15
+    assert all(t["customer_message"] is not None for t in data)
+
+
 def test_list_tickets_filters_by_customer_id(client, session):
     customer_a = _seed_customer(session)
     from customer_support_agent.repositories import CustomerRepository

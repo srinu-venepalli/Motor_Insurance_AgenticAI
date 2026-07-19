@@ -90,6 +90,66 @@ def test_customer_policy_repository_active_policy_lookup(session):
     assert repo.get_active_policy_for_customer(customer.id, as_of=stale_as_of) is None
 
 
+def test_customer_repository_get_many_batches_correctly(session):
+    repo = CustomerRepository(session)
+    c1 = repo.create(name="Alice", contact_no="+91-9000000001")
+    c2 = repo.create(name="Bob", contact_no="+91-9000000002")
+    repo.create(name="Charlie", contact_no="+91-9000000003")  # not requested
+    session.commit()
+
+    result = repo.get_many([c1.id, c2.id])
+
+    assert set(result.keys()) == {c1.id, c2.id}
+    assert result[c1.id].name == "Alice"
+    assert result[c2.id].name == "Bob"
+
+
+def test_customer_repository_get_many_empty_list_returns_empty_dict(session):
+    assert CustomerRepository(session).get_many([]) == {}
+
+
+def test_interaction_repository_get_latest_for_tickets(session):
+    customer, _, policy = _seed_customer_with_active_policy(session)
+    tickets = TicketRepository(session)
+    interactions = InteractionRepository(session)
+
+    t1 = tickets.create(customer_id=customer.id, customer_policy_id=policy.id)
+    t2 = tickets.create(customer_id=customer.id, customer_policy_id=policy.id)
+    session.commit()
+
+    interactions.create(ticket_id=t1.id, summary="first pass", faithfulness_pass=True)
+    session.commit()
+    interactions.create(ticket_id=t1.id, summary="second pass (latest)", faithfulness_pass=True)
+    session.commit()
+    interactions.create(ticket_id=t2.id, summary="only pass", faithfulness_pass=True)
+    session.commit()
+
+    result = interactions.get_latest_for_tickets([t1.id, t2.id])
+
+    assert result[t1.id].summary == "second pass (latest)"
+    assert result[t2.id].summary == "only pass"
+
+
+def test_ticket_message_repository_get_threads_for_tickets(session):
+    customer, _, policy = _seed_customer_with_active_policy(session)
+    tickets = TicketRepository(session)
+    messages = TicketMessageRepository(session)
+
+    t1 = tickets.create(customer_id=customer.id, customer_policy_id=policy.id)
+    t2 = tickets.create(customer_id=customer.id, customer_policy_id=policy.id)
+    session.commit()
+
+    messages.add_message(t1.id, MessageSender.CUSTOMER, "t1 first message")
+    messages.add_message(t1.id, MessageSender.HUMAN_AGENT, "t1 response")
+    messages.add_message(t2.id, MessageSender.CUSTOMER, "t2 first message")
+    session.commit()
+
+    result = messages.get_threads_for_tickets([t1.id, t2.id])
+
+    assert [m.text for m in result[t1.id]] == ["t1 first message", "t1 response"]
+    assert [m.text for m in result[t2.id]] == ["t2 first message"]
+
+
 def test_ticket_repository_count_recent_for_customer(session):
     from datetime import datetime, timedelta, timezone
 

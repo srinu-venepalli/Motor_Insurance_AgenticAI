@@ -59,3 +59,19 @@ class InteractionRepository(BaseRepository[Interaction]):
             .limit(limit)
         )
         return list(self.session.execute(stmt).scalars().all())
+
+    def get_latest_for_tickets(self, ticket_ids: list[int]) -> dict[int, Interaction]:
+        """Batch fetch -- one query for N ticket ids, instead of one
+        get_for_ticket() call per ticket. Used by list_tickets() to avoid
+        an N+1 query per ticket in the queue/history views."""
+        if not ticket_ids:
+            return {}
+        stmt = (
+            select(Interaction)
+            .where(Interaction.ticket_id.in_(ticket_ids))
+            .order_by(Interaction.created_at.asc())
+        )
+        latest_by_ticket: dict[int, Interaction] = {}
+        for interaction in self.session.execute(stmt).scalars().all():
+            latest_by_ticket[interaction.ticket_id] = interaction  # ascending order -> last write wins
+        return latest_by_ticket

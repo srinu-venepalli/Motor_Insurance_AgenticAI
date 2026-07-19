@@ -19,3 +19,19 @@ class TicketMessageRepository(BaseRepository[TicketMessage]):
             .order_by(TicketMessage.created_at.asc())
         )
         return list(self.session.execute(stmt).scalars().all())
+
+    def get_threads_for_tickets(self, ticket_ids: list[int]) -> dict[int, list[TicketMessage]]:
+        """Batch fetch -- one query for N ticket ids, instead of one
+        get_thread() call per ticket. Used by list_tickets() to avoid an
+        N+1 query per ticket in the queue/history views."""
+        if not ticket_ids:
+            return {}
+        stmt = (
+            select(TicketMessage)
+            .where(TicketMessage.ticket_id.in_(ticket_ids))
+            .order_by(TicketMessage.created_at.asc())
+        )
+        threads_by_ticket: dict[int, list[TicketMessage]] = {}
+        for message in self.session.execute(stmt).scalars().all():
+            threads_by_ticket.setdefault(message.ticket_id, []).append(message)
+        return threads_by_ticket

@@ -85,6 +85,12 @@ class TicketSummary(BaseModel):
     latest_summary: Optional[str] = Field(
         default=None, description="The latest interaction's summary, for the customer-history table."
     )
+    customer_message: Optional[str] = Field(
+        default=None, description="The customer's original ticket text (first customer message)."
+    )
+    response_sent: Optional[str] = Field(
+        default=None, description="The final human-agent response, if the ticket is closed."
+    )
 
 
 class TicketApproveRequest(BaseModel):

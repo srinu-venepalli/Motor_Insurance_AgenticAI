@@ -110,10 +110,18 @@ def list_tickets(
     """Agent console queue view (all customers) when customer_id is
     omitted; a specific customer's own ticket history when it's provided.
     resolution filters to 'approved' or 'rejected' -- only meaningful
-    alongside closed tickets, since open tickets have no resolution yet."""
+    alongside closed tickets, since open tickets have no resolution yet.
+
+    Deliberately batches every lookup (customers, interactions, message
+    threads) into one query each, regardless of how many tickets are
+    returned -- this used to be an N+1 query per ticket, and the response
+    now includes enough (customer_message, response_sent) that the UI
+    never needs a separate GET /tickets/{id} call per ticket either, which
+    was the more expensive problem (a full HTTP round-trip per ticket)."""
     tickets_repo = TicketRepository(db)
     customers_repo = CustomerRepository(db)
     interactions_repo = InteractionRepository(db)
+    messages_repo = TicketMessageRepository(db)
 
     status_enum = TicketStatus(status) if status else None
     try:
@@ -131,12 +139,28 @@ def list_tickets(
     else:
         tickets = tickets_repo.list_all(status=status_enum, resolution=resolution_enum)
 
+    if not tickets:
+        return []
+
+    ticket_ids = [t.id for t in tickets]
+    customer_ids = list({t.customer_id for t in tickets})
+
+    customers_by_id = customers_repo.get_many(customer_ids)
+    latest_interaction_by_ticket = interactions_repo.get_latest_for_tickets(ticket_ids)
+    threads_by_ticket = messages_repo.get_threads_for_tickets(ticket_ids)
+
     summaries = []
     for ticket in tickets:
-        customer = customers_repo.get(ticket.customer_id)
-        interactions = interactions_repo.get_for_ticket(ticket.id)
-        latest_escalated = interactions[-1].escalated if interactions else None
-        latest_summary = interactions[-1].summary if interactions else None
+        customer = customers_by_id.get(ticket.customer_id)
+        latest_interaction = latest_interaction_by_ticket.get(ticket.id)
+        thread = threads_by_ticket.get(ticket.id, [])
+
+        customer_message = next(
+            (m.text for m in thread if m.sender == MessageSender.CUSTOMER), None
+        )
+        human_messages = [m for m in thread if m.sender == MessageSender.HUMAN_AGENT]
+        response_sent = human_messages[-1].text if human_messages else None
+
         summaries.append(
             TicketSummary(
                 ticket_id=ticket.id,
@@ -146,8 +170,10 @@ def list_tickets(
                 status=ticket.status.value,
                 resolution=ticket.resolution.value if ticket.resolution else None,
                 opened_at=ticket.opened_at,
-                escalated=latest_escalated,
-                latest_summary=latest_summary,
+                escalated=latest_interaction.escalated if latest_interaction else None,
+                latest_summary=latest_interaction.summary if latest_interaction else None,
+                customer_message=customer_message,
+                response_sent=response_sent,
             )
         )
     return summaries
