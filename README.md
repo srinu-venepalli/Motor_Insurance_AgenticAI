@@ -13,7 +13,7 @@ Framing Document for persona, workflow, and success criteria.
 - [x] `knowledge_base/` -- 2 synthetic motor policy documents (comprehensive + third-party) ready for RAG ingestion
 - [x] `services/seed_data.py` + `scripts/seed_customers.py` -- 20 synthetic customers with policies, 5 human support agents
 - [x] `integrations/rag.py` + `integrations/policy_parser.py` -- knowledge_base ingestion into Pinecone
-- [x] `api/` -- FastAPI app with `/health`, `POST /ingest`, and full `/tickets` CRUD + `POST /tickets/{id}/process`
+- [x] `api/` -- FastAPI app: `/health`, `POST /ingest`, full `/tickets` CRUD (`create`/`list`/`process`/`approve`/`detail`), `/customers` (list/lookup-by-email/by-id), `/chat`
 - [x] `graph/` -- LangGraph agent core (classify -> tool-calling reasoning -> summarize -> faithfulness check -> rule-based escalation gate)
 - [x] LangSmith tracing wired in (`core/tracing.py`)
 - [x] `app.py` + `ui/` -- Streamlit UI (Customer Portal + Agent Console, hardcoded demo login)
@@ -58,6 +58,7 @@ the methods worth knowing about:
 
 | Repository | Key method | Why it exists |
 |---|---|---|
+| `CustomerRepository` | `get_by_email()` | Backs the login screen -- customers type their email, never their internal id |
 | `CustomerPolicyRepository` | `get_active_policy_for_customer()` | The validity check the agent should run *before* reasoning about coverage clauses |
 | `InteractionRepository` | `get_recent_for_customer()` | The actual "memory" query -- joins through `Ticket`, not a separate memory table |
 | `EscalationRepository` | `create()` / `update_status()` | Backs the `escalate_to_agent` tool and its lifecycle |
@@ -287,8 +288,14 @@ Then visit `http://localhost:8000/docs` for the interactive Swagger UI.
 | GET | `/health` | Liveness check |
 | POST | `/ingest` | Re-scan `knowledge_base/*.md` into Pinecone |
 | POST | `/tickets` | Create a ticket (`customer_id`, `ticket_text`) |
+| GET | `/tickets` | List tickets (agent queue, or `?customer_id=` for a customer's own history) -- filterable by `status`/`resolution` |
 | POST | `/tickets/{id}/process` | Run the agent graph on it |
-| GET | `/tickets/{id}` | Fetch ticket + interaction history |
+| GET | `/tickets/{id}` | Fetch ticket + interaction + message history |
+| POST | `/tickets/{id}/approve` | Human agent sends the (possibly edited) draft; closes the ticket with a resolution of `approved` or `rejected` |
+| GET | `/customers` | List all customers (id + name) |
+| GET | `/customers/lookup?email=` | Resolve a customer's email to their id + name -- backs the login screen so customers never see or type their internal id |
+| GET | `/customers/{id}` | Fetch one customer by id |
+| POST | `/chat` | One turn of the customer-facing chat assistant (see Phase 6 section below) |
 
 Create and process are deliberately separate steps -- a real ticket intake
 (e.g. a customer submission form) and the AI's processing of it are
@@ -305,6 +312,14 @@ curl -X POST http://localhost:8000/tickets/1/process
 curl http://localhost:8000/tickets/1
 # -> ticket detail + interaction history
 ```
+
+**`GET /tickets` is batched, not per-ticket.** It returns everything the
+Customer Portal's "My Tickets" and the Agent Console's ticket-history views
+need (`customer_message`, `response_sent`, `latest_summary`) directly, via
+three batched queries total regardless of how many tickets are returned --
+not a follow-up `GET /tickets/{id}` call per ticket. This replaced a real
+N+1 pattern found during testing: with 20+ tickets, the UI was making 20+
+separate HTTP round-trips just to render one page.
 
 ## The agent graph (`graph/`)
 
@@ -359,9 +374,11 @@ window, a claimed amount exceeding `HIGH_VALUE_CLAIM_THRESHOLD`, and (Phase
 exceeds `ADAPTIVE_EDIT_DISTANCE_THRESHOLD` -- see the dedicated section
 below. All thresholds/names are **configured via `.env`, not hardcoded** --
 see `_evaluate_escalation()`'s docstring in `graph/nodes.py` for the full
-rule list and priority assignment (faithfulness failure and high-value
-claim both get `HIGH` priority + the named supervisor; everything else
-`MEDIUM`).
+rule list. **Every escalation is assigned to the named supervisor**,
+regardless of priority tier -- priority (`HIGH` for faithfulness failure
+and high-value claims, `MEDIUM` for everything else) communicates urgency,
+but assignment isn't conditional on it, so a repeat-customer escalation
+reaches the supervisor exactly like a faithfulness failure does.
 
 | Setting | Default | Purpose |
 |---|---|---|
@@ -448,9 +465,11 @@ something (UI and backend are properly decoupled, as they'd be in a real
 deployment).
 
 **Login is intentionally simplified**: everyone shares one password
-(`DEMO_SHARED_PASSWORD` in `.env`, default `password1`). Customers additionally
-enter an existing customer ID (validated against the DB via `GET
-/customers/{id}`); agents pick their name from the 5 seeded agents. This is
+(`DEMO_SHARED_PASSWORD` in `.env`, default `password1`). Customers type
+their own email address, resolved to a customer id via `GET
+/customers/lookup` -- the id itself is never shown or typed by the user,
+since asking someone to know their own internal database id isn't
+realistic UX. Agents pick their name from the 5 seeded agents. This is
 explicitly **not production authentication** -- worth stating plainly in
 your Engineering Justification rather than pretending otherwise.
 
