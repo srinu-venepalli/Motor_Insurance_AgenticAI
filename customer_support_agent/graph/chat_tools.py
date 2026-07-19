@@ -18,7 +18,7 @@ from __future__ import annotations
 from langchain_core.tools import tool
 from sqlalchemy.orm import Session
 
-from customer_support_agent.core import get_logger
+from customer_support_agent.core import get_logger, log_transaction
 from customer_support_agent.graph.build_graph import build_graph
 from customer_support_agent.graph.tools import make_policy_lookup_tool
 from customer_support_agent.models import MessageSender, TicketCategory
@@ -80,19 +80,45 @@ def make_chat_tools(session: Session, customer_id: int, embed_fn=None, index=Non
 
         try:
             graph = build_graph(session)
-            graph.invoke(
-                {
-                    "ticket_id": ticket.id,
-                    "customer_id": customer_id,
-                    "ticket_text": issue_description,
-                },
-                config={
-                    "run_name": f"ticket-{ticket.id}",
-                    "tags": ["chat"],
-                    "metadata": {"ticket_id": ticket.id, "customer_id": customer_id},
-                },
-            )
+            with log_transaction("process_ticket", ticket_id=ticket.id, customer_id=customer_id):
+                result = graph.invoke(
+                    {
+                        "ticket_id": ticket.id,
+                        "customer_id": customer_id,
+                        "ticket_text": issue_description,
+                    },
+                    config={
+                        "run_name": f"ticket-{ticket.id}",
+                        "tags": ["chat"],
+                        "metadata": {"ticket_id": ticket.id, "customer_id": customer_id},
+                    },
+                )
+
+            # Mirror api/tickets.py's process_ticket() post-processing: the
+            # graph's own nodes persist the Interaction row, but the draft
+            # and classified category are only ever saved here -- this was
+            # the bug (see initial_analysis.txt), these two steps must run
+            # on every code path that invokes the graph, not just the
+            # /tickets/{id}/process endpoint.
+            draft_response = result.get("draft_response")
+            if draft_response:
+                message_repo.add_message(ticket.id, MessageSender.AI_DRAFT, draft_response)
+
+            classified_category = result.get("category")
+            if classified_category:
+                try:
+                    ticket.category = TicketCategory(classified_category)
+                except ValueError:
+                    logger.warning(
+                        "chat create_support_ticket: model returned unrecognized "
+                        "category %r for ticket_id=%s, leaving existing category unchanged",
+                        classified_category,
+                        ticket.id,
+                    )
+
+            session.commit()
         except Exception as exc:  # noqa: BLE001 -- ticket creation must still succeed
+            session.rollback()
             logger.warning(
                 "chat create_support_ticket: auto-processing failed for ticket_id=%s: %r",
                 ticket.id,

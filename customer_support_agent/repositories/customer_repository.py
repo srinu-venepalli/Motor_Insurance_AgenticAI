@@ -1,6 +1,6 @@
 """Customer repository."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from customer_support_agent.models import Customer
 from customer_support_agent.repositories.base import BaseRepository
@@ -17,6 +17,14 @@ class CustomerRepository(BaseRepository[Customer]):
         without a customer_id yet and needs to be matched to an existing
         record."""
         stmt = select(Customer).where(Customer.contact_no == contact_no)
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def get_by_email(self, email: str) -> Customer | None:
+        """Look up a customer by contact_email -- backs the customer login
+        screen (manual email entry), so this needs to be a normal lookup a
+        customer typing their own address on a phone keyboard will actually
+        hit: trimmed and case-insensitive."""
+        stmt = select(Customer).where(func.lower(Customer.contact_email) == email.strip().lower())
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_many(self, ids: list[int]) -> dict[int, Customer]:

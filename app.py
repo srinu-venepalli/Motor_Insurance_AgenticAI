@@ -6,12 +6,12 @@ Run with:
 
 Login is intentionally simplified for this demo: a single shared password
 (settings.demo_shared_password, default "password1") for everyone --
-customers pick their name from a dropdown (fetched from GET /customers),
-agents pick theirs from the seeded roster. Customer IDs are resolved
-internally from the selected name and never shown or typed by the user --
-asking someone to know their own internal database ID isn't realistic UX.
-This is NOT production authentication; a real deployment needs per-user
-credentials and hashed passwords.
+customers type their own email address (resolved via GET
+/customers/lookup), agents pick theirs from the seeded roster. Customer IDs
+are resolved internally from the email and never shown or typed by the
+user -- asking someone to know their own internal database ID isn't
+realistic UX. This is NOT production authentication; a real deployment
+needs per-user credentials and hashed passwords.
 """
 
 from pathlib import Path
@@ -49,22 +49,13 @@ def _login_form(placeholder) -> None:
 
         role = st.radio("I am a...", ["Customer", "Support Agent"], horizontal=True)
 
-        customer_options: dict[str, int] = {}
-        if role == "Customer":
-            try:
-                customers = api_client.list_customers()
-            except api_client.ApiError as exc:
-                st.error(f"Couldn't load the customer list: {exc}")
-                return
-            customer_options = {c["name"]: c["id"] for c in customers}
-
         with st.form("login_form"):
-            selected_customer_name = None
+            customer_email = None
             agent_name = None
             if role == "Customer":
-                if not customer_options:
-                    st.warning("No customers found -- run scripts/seed_customers.py first.")
-                selected_customer_name = st.selectbox("Customer", list(customer_options.keys()))
+                customer_email = st.text_input(
+                    "Email", placeholder="rohan.sharma@example.com"
+                )
             else:
                 agent_name = st.selectbox("Agent name", AGENT_NAMES)
             password = st.text_input("Password", type="password")
@@ -78,13 +69,17 @@ def _login_form(placeholder) -> None:
             return
 
         if role == "Customer":
-            customer_id = customer_options.get(selected_customer_name)
-            if customer_id is None:
-                st.error("Please select a valid customer.")
+            if not customer_email or not customer_email.strip():
+                st.error("Please enter your email.")
+                return
+            try:
+                customer = api_client.get_customer_by_email(customer_email.strip())
+            except api_client.ApiError as exc:
+                st.error(f"We couldn't find an account for that email: {exc}")
                 return
             st.session_state["role"] = "customer"
-            st.session_state["customer_id"] = customer_id
-            st.session_state["customer_name"] = selected_customer_name
+            st.session_state["customer_id"] = customer["id"]
+            st.session_state["customer_name"] = customer["name"]
         else:
             st.session_state["role"] = "agent"
             st.session_state["agent_name"] = agent_name

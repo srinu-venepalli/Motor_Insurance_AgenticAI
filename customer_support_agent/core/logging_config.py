@@ -21,6 +21,17 @@ from customer_support_agent.core.settings import settings
 
 _LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 
+# core/observability.py's log_transaction() writes exclusively to a logger
+# named this -- kept as its own file (see setup_logging below) so business
+# events (ticket processed, escalated, etc.) are a readable audit trail
+# instead of being interleaved with per-request httpx/ui.api_client noise.
+TRANSACTIONS_LOGGER_NAME = "transactions"
+
+# httpx logs a line for every single outbound HTTP call (every LLM call is
+# one) at INFO -- that's the dominant source of noise in the main app log.
+# WARNING still surfaces anything actually going wrong (4xx/5xx, retries).
+_NOISY_LOGGERS_MAX_LEVEL = {"httpx": logging.WARNING}
+
 _configured = False
 
 
@@ -52,6 +63,25 @@ def setup_logging() -> None:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
+
+    for logger_name, max_level in _NOISY_LOGGERS_MAX_LEVEL.items():
+        logging.getLogger(logger_name).setLevel(max_level)
+
+    # Separate audit stream for log_transaction() business events, in its
+    # own rotating file rather than mixed into app.log. propagate=False so
+    # these lines aren't *also* duplicated into the root handlers above.
+    transactions_path = log_dir / "transactions.log"
+    transactions_handler = RotatingFileHandler(
+        transactions_path,
+        maxBytes=settings.log_max_bytes,
+        backupCount=settings.log_backup_count,
+        encoding="utf-8",
+    )
+    transactions_handler.setFormatter(formatter)
+    transactions_logger = logging.getLogger(TRANSACTIONS_LOGGER_NAME)
+    transactions_logger.setLevel(settings.log_level.upper())
+    transactions_logger.addHandler(transactions_handler)
+    transactions_logger.propagate = False
 
     _configured = True
 

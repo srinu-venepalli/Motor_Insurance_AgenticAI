@@ -68,6 +68,13 @@ def get_customer(customer_id: int) -> dict:
     return _handle("GET", url, resp, started_at)
 
 
+def get_customer_by_email(email: str) -> dict:
+    url = f"{BASE_URL}/customers/lookup"
+    started_at = time.perf_counter()
+    resp = requests.get(url, params={"email": email}, timeout=_TIMEOUT_SHORT)
+    return _handle("GET", url, resp, started_at)
+
+
 def create_ticket(customer_id: int, ticket_text: str) -> dict:
     url = f"{BASE_URL}/tickets"
     started_at = time.perf_counter()

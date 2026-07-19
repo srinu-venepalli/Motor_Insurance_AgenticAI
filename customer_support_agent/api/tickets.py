@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from customer_support_agent.api.deps import get_db
-from customer_support_agent.core import get_logger
+from customer_support_agent.core import get_logger, log_transaction
 from customer_support_agent.core.retry import llm_call_retry
 from customer_support_agent.graph import build_graph
 from customer_support_agent.models import (
@@ -202,20 +202,24 @@ def process_ticket(ticket_id: int, db: Session = Depends(get_db)) -> TicketProce
 
     graph = build_graph(db)
     try:
-        result = _invoke_graph_with_retry(
-            graph,
-            {
-                "ticket_id": ticket.id,
-                "customer_id": ticket.customer_id,
-                "ticket_text": ticket_text,
-            },
-            config={
-                "run_name": f"ticket-{ticket.id}",
-                "tags": ["api"],
-                "metadata": {"ticket_id": ticket.id, "customer_id": ticket.customer_id},
-            },
-        )
+        with log_transaction("process_ticket", ticket_id=ticket.id, customer_id=ticket.customer_id):
+            result = _invoke_graph_with_retry(
+                graph,
+                {
+                    "ticket_id": ticket.id,
+                    "customer_id": ticket.customer_id,
+                    "ticket_text": ticket_text,
+                },
+                config={
+                    "run_name": f"ticket-{ticket.id}",
+                    "tags": ["api"],
+                    "metadata": {"ticket_id": ticket.id, "customer_id": ticket.customer_id},
+                },
+            )
     except Exception as exc:
+        # log_transaction() already wrote the FAILURE audit line (with
+        # duration) and re-raised -- this still handles turning it into the
+        # HTTP-level response.
         logger.error(
             "process_ticket: graph invocation failed after retries for ticket_id=%s: %r",
             ticket_id,
@@ -341,36 +345,37 @@ def approve_ticket(
             detail=f"resolution must be 'approved' or 'rejected', got {payload.resolution!r}",
         )
 
-    message_repo = TicketMessageRepository(db)
-    thread = message_repo.get_thread(ticket_id)
-    drafts = [m for m in thread if m.sender == MessageSender.AI_DRAFT]
-    original_draft_text = drafts[-1].text if drafts else None
+    with log_transaction("approve_ticket", ticket_id=ticket_id, resolution=resolution.value):
+        message_repo = TicketMessageRepository(db)
+        thread = message_repo.get_thread(ticket_id)
+        drafts = [m for m in thread if m.sender == MessageSender.AI_DRAFT]
+        original_draft_text = drafts[-1].text if drafts else None
 
-    final_text = payload.final_response
-    if final_text is None:
-        if original_draft_text is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Ticket {ticket_id} has no AI draft to send -- process it first, "
-                "or provide final_response explicitly.",
-            )
-        final_text = original_draft_text
+        final_text = payload.final_response
+        if final_text is None:
+            if original_draft_text is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Ticket {ticket_id} has no AI draft to send -- process it first, "
+                    "or provide final_response explicitly.",
+                )
+            final_text = original_draft_text
 
-    message_repo.add_message(ticket_id, MessageSender.HUMAN_AGENT, final_text)
+        message_repo.add_message(ticket_id, MessageSender.HUMAN_AGENT, final_text)
 
-    ticket.resolution = resolution
-    updated_ticket = tickets.update_status(ticket_id, TicketStatus.CLOSED)
+        ticket.resolution = resolution
+        updated_ticket = tickets.update_status(ticket_id, TicketStatus.CLOSED)
 
-    edit_distance = None
-    if original_draft_text is not None:
-        edit_distance = _levenshtein(original_draft_text, final_text)
-        interactions = InteractionRepository(db).get_for_ticket(ticket_id)
-        if interactions:
-            FeedbackRepository(db).create(
-                interaction_id=interactions[-1].id,
-                edit_distance=edit_distance,
-                notes=f"Resolution: {resolution.value}",
-            )
+        edit_distance = None
+        if original_draft_text is not None:
+            edit_distance = _levenshtein(original_draft_text, final_text)
+            interactions = InteractionRepository(db).get_for_ticket(ticket_id)
+            if interactions:
+                FeedbackRepository(db).create(
+                    interaction_id=interactions[-1].id,
+                    edit_distance=edit_distance,
+                    notes=f"Resolution: {resolution.value}",
+                )
 
     return TicketApproveResponse(
         ticket_id=ticket_id,

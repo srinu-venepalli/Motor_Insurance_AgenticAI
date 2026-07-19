@@ -13,9 +13,9 @@ import time
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-from customer_support_agent.core.logging_config import get_logger
+from customer_support_agent.core.logging_config import TRANSACTIONS_LOGGER_NAME, get_logger
 
-logger = get_logger("transactions")
+logger = get_logger(TRANSACTIONS_LOGGER_NAME)
 
 # Field names that must never appear in a log line, wherever they show up
 # in a context/payload dict passed to log_transaction().

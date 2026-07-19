@@ -27,7 +27,7 @@ from typing import Callable
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from sqlalchemy.orm import Session
 
-from customer_support_agent.core import get_logger, settings
+from customer_support_agent.core import get_logger, redact_for_trace, settings
 from customer_support_agent.graph.state import AgentState
 from customer_support_agent.graph.tools import customer_history_lookup_fn
 from customer_support_agent.models import EscalationPriority, TicketCategory
@@ -173,6 +173,17 @@ def make_fetch_customer_context_node(
                 TicketCategory(category), min_samples=min_samples
             )
 
+        # customer_context can carry PII_FIELDS keys (e.g. vehicle_reg_no) --
+        # route through redact_for_trace before this ever reaches a log
+        # line, same choke point log_transaction() uses.
+        logger.info(
+            "fetch_customer_context: ticket_id=%s customer_context=%s "
+            "category_avg_edit_distance=%s",
+            state.get("ticket_id"),
+            redact_for_trace(context),
+            category_avg_edit_distance,
+        )
+
         return {
             "customer_name": customer.name if customer else None,
             "customer_context": context,
@@ -273,6 +284,16 @@ def make_agent_reasoning_node(
                 "agent_reasoning: hit max_iterations=%d without the model stopping tool calls",
                 max_iterations,
             )
+
+        # Logged unconditionally (tool names only -- never their args or
+        # results, which can carry policy/customer data) so a normal run
+        # leaves a trace of what the model actually did, not just failures.
+        logger.info(
+            "agent_reasoning: ticket_id=%s tool_calls_made=%s retrieved_clauses_count=%d",
+            state.get("ticket_id"),
+            tool_calls_made,
+            len(retrieved_clauses),
+        )
 
         result_update: dict = {
             "tool_calls_made": tool_calls_made,
@@ -375,12 +396,24 @@ def make_summarize_node(llm) -> Callable[[AgentState], dict]:
             logger.warning("summarize_and_draft: model returned non-numeric claimed_amount %r", raw_amount)
             claimed_amount = None
 
+        cited_clause_ids = data.get("cited_clause_ids") or []
+        needs_escalation_soft_signal = bool(data.get("needs_escalation", False))
+
+        logger.info(
+            "summarize_and_draft: ticket_id=%s cited_clause_ids_count=%d "
+            "claimed_amount=%s needs_escalation_soft_signal=%s",
+            state.get("ticket_id"),
+            len(cited_clause_ids),
+            claimed_amount,
+            needs_escalation_soft_signal,
+        )
+
         return {
             "summary": data.get("summary"),
             "draft_response": draft_response,
-            "cited_clause_ids": data.get("cited_clause_ids") or [],
+            "cited_clause_ids": cited_clause_ids,
             "claimed_amount": claimed_amount,
-            "needs_escalation_soft_signal": bool(data.get("needs_escalation", False)),
+            "needs_escalation_soft_signal": needs_escalation_soft_signal,
             "escalation_soft_reason": data.get("escalation_reason"),
         }
 
@@ -421,6 +454,15 @@ def faithfulness_check(state: AgentState) -> dict:
             if passed
             else f"Cited clause(s) not found in retrieved set: {sorted(unsupported)}"
         )
+
+    logger.info(
+        "faithfulness_check: ticket_id=%s faithfulness_pass=%s cited_count=%d "
+        "unsupported_count=%d",
+        state.get("ticket_id"),
+        passed,
+        len(cited_ids),
+        len(cited_ids - retrieved_ids),
+    )
 
     return {"faithfulness_pass": passed, "faithfulness_reason": reason}
 
@@ -638,6 +680,16 @@ def make_escalate_node(
         )
         session.flush()
 
+        logger.info(
+            "escalate_to_agent: ticket_id=%s escalation_id=%s priority=%s "
+            "faithfulness_pass=%s assigned_agent_id=%s",
+            state["ticket_id"],
+            escalation.id,
+            priority.value,
+            faithfulness_pass,
+            escalation.assigned_agent_id,
+        )
+
         return {"escalated": True, "escalation_reason": reason, "escalation_id": escalation.id}
 
     return escalate_to_agent_node
@@ -654,6 +706,7 @@ def make_present_node(session: Session) -> Callable[[AgentState], dict]:
             escalated=False,
         )
         session.flush()
+        logger.info("present_to_human: ticket_id=%s escalated=False", state["ticket_id"])
         return {"escalated": False}
 
     return present_to_human
