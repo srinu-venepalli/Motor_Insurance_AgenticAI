@@ -43,52 +43,58 @@ def _render_login_header() -> None:
     )
 
 
-def _login_form() -> None:
-    _render_login_header()
+def _login_form(placeholder) -> None:
+    with placeholder.container():
+        _render_login_header()
 
-    role = st.radio("I am a...", ["Customer", "Support Agent"], horizontal=True)
+        role = st.radio("I am a...", ["Customer", "Support Agent"], horizontal=True)
 
-    customer_options: dict[str, int] = {}
-    if role == "Customer":
-        try:
-            customers = api_client.list_customers()
-        except api_client.ApiError as exc:
-            st.error(f"Couldn't load the customer list: {exc}")
-            return
-        customer_options = {c["name"]: c["id"] for c in customers}
-
-    with st.form("login_form"):
-        selected_customer_name = None
-        agent_name = None
+        customer_options: dict[str, int] = {}
         if role == "Customer":
-            if not customer_options:
-                st.warning("No customers found -- run scripts/seed_customers.py first.")
-            selected_customer_name = st.selectbox("Customer", list(customer_options.keys()))
-        else:
-            agent_name = st.selectbox("Agent name", AGENT_NAMES)
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Log in", use_container_width=True)
+            try:
+                customers = api_client.list_customers()
+            except api_client.ApiError as exc:
+                st.error(f"Couldn't load the customer list: {exc}")
+                return
+            customer_options = {c["name"]: c["id"] for c in customers}
 
-    if not submitted:
-        return
+        with st.form("login_form"):
+            selected_customer_name = None
+            agent_name = None
+            if role == "Customer":
+                if not customer_options:
+                    st.warning("No customers found -- run scripts/seed_customers.py first.")
+                selected_customer_name = st.selectbox("Customer", list(customer_options.keys()))
+            else:
+                agent_name = st.selectbox("Agent name", AGENT_NAMES)
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Log in", use_container_width=True)
 
-    if password != settings.demo_shared_password:
-        st.error("Incorrect password.")
-        return
-
-    if role == "Customer":
-        customer_id = customer_options.get(selected_customer_name)
-        if customer_id is None:
-            st.error("Please select a valid customer.")
+        if not submitted:
             return
-        st.session_state["role"] = "customer"
-        st.session_state["customer_id"] = customer_id
-        st.session_state["customer_name"] = selected_customer_name
-    else:
-        st.session_state["role"] = "agent"
-        st.session_state["agent_name"] = agent_name
-        st.session_state["agent_role"] = AGENT_ROLES.get(agent_name, "support_agent")
 
+        if password != settings.demo_shared_password:
+            st.error("Incorrect password.")
+            return
+
+        if role == "Customer":
+            customer_id = customer_options.get(selected_customer_name)
+            if customer_id is None:
+                st.error("Please select a valid customer.")
+                return
+            st.session_state["role"] = "customer"
+            st.session_state["customer_id"] = customer_id
+            st.session_state["customer_name"] = selected_customer_name
+        else:
+            st.session_state["role"] = "agent"
+            st.session_state["agent_name"] = agent_name
+            st.session_state["agent_role"] = AGENT_ROLES.get(agent_name, "support_agent")
+
+    # Explicitly clear the placeholder's contents BEFORE rerunning, rather
+    # than relying on Streamlit's automatic diffing between runs -- that's
+    # what was causing the login form to visibly linger/fade while the
+    # portal was already rendering underneath it.
+    placeholder.empty()
     st.rerun()
 
 
@@ -96,7 +102,8 @@ def main() -> None:
     inject_base_style()
 
     if "role" not in st.session_state:
-        _login_form()
+        placeholder = st.empty()
+        _login_form(placeholder)
         return
 
     if st.session_state["role"] == "customer":

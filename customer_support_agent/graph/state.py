@@ -23,6 +23,10 @@ class AgentState(TypedDict, total=False):
     tool_calls_made: list[str]
     retrieved_clauses: list[dict]
     customer_context: Optional[dict]
+    # Phase 7 adaptive behaviour signal: average historical edit_distance
+    # for this ticket's category (from Feedback), or None if there isn't
+    # enough data yet -- see _evaluate_escalation() in graph/nodes.py.
+    category_avg_edit_distance: Optional[float]
 
     # --- summarize_and_draft ---
     summary: Optional[str]

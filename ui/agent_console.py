@@ -42,11 +42,13 @@ def _queue_sort_priority(ticket: dict) -> int:
     return 1  # awaiting review
 
 
-def _render_previous_tickets_table(customer_id: int, current_ticket_id: int) -> None:
-    """Every other ticket from this same customer, newest first -- this is
-    the 'memory' the agent gets to see directly (the backend already uses
-    this same data for the AI's own customer_history_lookup tool; this is
-    just surfacing it to a human too)."""
+def _render_previous_tickets_accordion(customer_id: int, current_ticket_id: int) -> None:
+    """Every other ticket from this same customer, newest first, one
+    expander each -- this is the 'memory' the agent gets to see directly
+    (the backend already uses this same data for the AI's own
+    customer_history_lookup tool; this is just surfacing it to a human
+    too), now with the full summary and the actual response sent, not just
+    a truncated one-line table."""
     st.divider()
     st.markdown("**Previous tickets from this customer:**")
     try:
@@ -62,21 +64,35 @@ def _render_previous_tickets_table(customer_id: int, current_ticket_id: int) -> 
         st.caption("No previous tickets from this customer.")
         return
 
-    rows = []
     for t in other_tickets:
-        summary = t.get("latest_summary") or "(not yet processed)"
-        if len(summary) > 80:
-            summary = summary[:77] + "..."
-        rows.append(
-            {
-                "Ticket #": t["ticket_id"],
-                "Date": t["opened_at"][:10],
-                "Category": t["category"].replace("_", " ").title(),
-                "Status": t["status"].title(),
-                "Summary": summary,
-            }
+        _, label = _status_kind_and_label(t)
+        header = (
+            f"#{t['ticket_id']} \u00b7 {t['opened_at'][:10]} \u00b7 "
+            f"{t['category'].replace('_', ' ').title()} \u00b7 {label}"
         )
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+        with st.expander(header):
+            try:
+                other_detail = api_client.get_ticket(t["ticket_id"])
+            except api_client.ApiError as exc:
+                st.caption(f"Couldn't load detail: {exc}")
+                continue
+
+            other_customer_msgs = [m for m in other_detail["messages"] if m["sender"] == "customer"]
+            other_human_msgs = [m for m in other_detail["messages"] if m["sender"] == "human_agent"]
+
+            if other_customer_msgs:
+                st.caption("Customer asked:")
+                st.write(other_customer_msgs[0]["text"])
+
+            if other_detail["interactions"]:
+                st.caption("AI summary (internal):")
+                st.write(other_detail["interactions"][-1]["summary"])
+
+            if other_human_msgs:
+                st.caption("Response sent:")
+                st.success(other_human_msgs[-1]["text"])
+            else:
+                st.caption("(No response sent yet -- still open or escalated.)")
 
 
 def render() -> None:
@@ -132,7 +148,7 @@ def render() -> None:
     # Pending work first (escalated > awaiting review > not yet processed),
     # closed tickets last -- see _queue_sort_priority() for the rationale.
     # Within each tier, newest first (descending ticket_id) -- same
-    # convention as _render_previous_tickets_table()'s history view, so the
+    # convention as _render_previous_tickets_accordion()'s history view, so the
     # two lists don't disagree about what "recent" means.
     tickets.sort(key=lambda t: (_queue_sort_priority(t), -t["ticket_id"]))
 
@@ -281,4 +297,4 @@ def render() -> None:
                         else:
                             st.rerun()
 
-        _render_previous_tickets_table(detail["customer_id"], ticket_id)
+        _render_previous_tickets_accordion(detail["customer_id"], ticket_id)

@@ -9,7 +9,7 @@ or:
 
 from fastapi import FastAPI
 
-from customer_support_agent.api import customers, health, ingestion, tickets
+from customer_support_agent.api import chat, customers, health, ingestion, tickets
 from customer_support_agent.core import get_logger, setup_logging, settings
 
 setup_logging()
@@ -20,6 +20,7 @@ app.include_router(health.router)
 app.include_router(ingestion.router)
 app.include_router(tickets.router)
 app.include_router(customers.router)
+app.include_router(chat.router)
 
 
 def main() -> None:

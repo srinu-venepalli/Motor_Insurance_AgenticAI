@@ -17,6 +17,7 @@ Framing Document for persona, workflow, and success criteria.
 - [x] `graph/` -- LangGraph agent core (classify -> tool-calling reasoning -> summarize -> faithfulness check -> rule-based escalation gate)
 - [x] LangSmith tracing wired in (`core/tracing.py`)
 - [x] `app.py` + `ui/` -- Streamlit UI (Customer Portal + Agent Console, hardcoded demo login)
+- [x] Phase 6: customer-facing AI chat assistant (`graph/chat_agent.py`, `POST /chat`, "AI Assistant" tab)
 - [ ] `integrations/memory.py` -- semantic memory (currently just repository queries; Pinecone customer-memory index not yet used)
 - [x] `docker-compose.yml` -- Postgres for local dev
 
@@ -353,8 +354,10 @@ driven by a single `_evaluate_escalation()` source of truth) that runs
 initiative. Rules, in order: faithfulness failure, the LLM's soft signal,
 complaint category, coverage question with no active policy, more than
 `MAX_TICKETS_PER_30_DAYS` tickets from the same customer in a rolling
-window, and a claimed amount exceeding `HIGH_VALUE_CLAIM_THRESHOLD`. All
-four thresholds/names below are **configured via `.env`, not hardcoded** --
+window, a claimed amount exceeding `HIGH_VALUE_CLAIM_THRESHOLD`, and (Phase
+7 adaptive behaviour) a category whose historical average edit-distance
+exceeds `ADAPTIVE_EDIT_DISTANCE_THRESHOLD` -- see the dedicated section
+below. All thresholds/names are **configured via `.env`, not hardcoded** --
 see `_evaluate_escalation()`'s docstring in `graph/nodes.py` for the full
 rule list and priority assignment (faithfulness failure and high-value
 claim both get `HIGH` priority + the named supervisor; everything else
@@ -366,6 +369,8 @@ claim both get `HIGH` priority + the named supervisor; everything else
 | `MAX_TICKETS_PER_30_DAYS` | 2 | More than this many tickets in the window escalates |
 | `REPEAT_TICKET_WINDOW_DAYS` | 30 | Rolling window used to count recent tickets |
 | `SUPERVISOR_AGENT_NAME` | Arjun Mehta | Seeded agent assigned to HIGH priority escalations |
+| `ADAPTIVE_EDIT_DISTANCE_THRESHOLD` | 80 | Avg edit distance (chars) above which a category auto-escalates |
+| `ADAPTIVE_MIN_FEEDBACK_SAMPLES` | 3 | Feedback rows needed before the adaptive rule activates |
 
 Every node factory that needs one of these (`make_escalation_gate`,
 `make_escalate_node`, `make_fetch_customer_context_node`) reads it from
@@ -478,3 +483,84 @@ your local Streamlit process. It's temporary -- live only while both your
 machine and the tunnel are running -- but needs zero changes to your
 database or deployment setup. (If you don't have ngrok installed:
 `https://ngrok.com/download`, free account required for the URL.)
+
+## Phase 7: Adaptive Behaviour
+
+The `feedback` table (edit_distance, notes) has been populated automatically
+on every `POST /tickets/{id}/approve` since the reject-claim feature was
+added -- but until now, nothing ever *read* it back to change future
+behaviour. That's the actual Phase 7 requirement ("modify behaviour based
+on feedback", not just "store feedback"), and it's now wired up:
+
+**The signal:** `FeedbackRepository.average_edit_distance_for_category()`
+computes the average `edit_distance` (how much a human agent had to rewrite
+the AI's draft) across all `Feedback` rows for a given ticket category.
+Returns `None` if there are fewer than `ADAPTIVE_MIN_FEEDBACK_SAMPLES` (.env,
+default 3) data points, so one early heavily-edited draft doesn't
+overreact.
+
+**Where it's computed:** `fetch_customer_context` (already runs after
+`classify_ticket`, so `state['category']` is known, and already has a DB
+session) -- adds `category_avg_edit_distance` to state.
+
+**The adaptive rule:** rule 7 in `_evaluate_escalation()` -- if a
+category's average edit distance exceeds `ADAPTIVE_EDIT_DISTANCE_THRESHOLD`
+(.env, default 80 characters), new tickets in that category auto-escalate,
+even with a clean faithfulness pass and no other trigger. The system has
+"learned" it's unreliable for that category from accumulated human
+corrections, and defers earlier instead of repeating the same mistake.
+
+**Before/after demonstration:**
+`tests/test_agent_graph.py::test_graph_adaptive_behaviour_before_and_after_feedback`
+runs the *identical* ticket category and draft quality twice -- before any
+feedback history exists (presents normally) and after 3 heavily-edited
+historical drafts accumulate for that category (auto-escalates,
+`escalation_reason` explicitly says `"Adaptive: agents have historically
+made large edits..."`). This is the concrete evidence for your Evaluation
+Report: same inputs, different outcome, because the system learned from
+feedback in between.
+
+## Phase 6: Customer Chat Assistant
+
+A genuinely separate assistant from the ticket-processing graph
+(`graph/build_graph.py`) -- deliberately a single tool-calling reasoning
+loop (`graph/chat_agent.py::run_chat_turn`), not a full LangGraph
+`StateGraph`. There's no branching, faithfulness check, or escalation gate
+needed here, since this assistant never makes a final coverage/claim
+decision itself -- building a whole graph for one linear loop would be
+complexity without a purpose.
+
+**What it can do directly:** look up the customer's own policy
+number/status/expiry (`get_my_policy_info`), list their tickets
+(`list_my_tickets`), answer general coverage questions grounded in
+retrieved clauses (`policy_lookup`, same tool the ticket-processing agent
+uses), and share the toll-free number/support email (static config,
+`SUPPORT_TOLL_FREE_NUMBER` / `SUPPORT_EMAIL` in `.env`).
+
+**What it does NOT do:** make a final coverage or claim determination in
+the chat itself. For anything needing a real decision, it calls
+`create_support_ticket`, which creates a ticket and runs it through the
+*exact same* AI-draft-then-human-review pipeline as the "New Ticket" tab --
+so the human-in-the-loop safety design isn't bypassed by adding a second,
+unreviewed answer path.
+
+**Memory design:**
+- *Short-term*: the conversation's own message history, held in Streamlit
+  session state (`st.session_state["_chat_history"]`) and sent back and
+  forth with each `/chat` call -- the server is stateless between turns.
+  Reset on logout (`st.session_state.clear()`), which is the correct
+  retention rule for a per-session assistant like this.
+- *Long-term*: the same customer/ticket/policy history used everywhere
+  else in this project, read fresh from Postgres on every turn via the
+  tools above -- no new storage mechanism, no separate retention policy.
+
+**Resilience:** `POST /chat` uses the same retry-then-graceful-502 pattern
+as `/tickets/{id}/process` (both factored into
+`core/retry.py::llm_call_retry`, a single shared policy) -- both go through
+tool-calling and can hit the same intermittent proxy issue diagnosed
+earlier in this project.
+
+Try it: log in as a customer, open the "AI Assistant" tab, and ask "What's
+my policy number?" or "Does my policy cover a cracked windscreen?" or "My
+engine broke down, can you help?" (the last one should result in a new
+ticket being created).

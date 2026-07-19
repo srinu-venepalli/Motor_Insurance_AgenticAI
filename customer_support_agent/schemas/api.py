@@ -111,3 +111,19 @@ class TicketApproveResponse(BaseModel):
 class CustomerOut(BaseModel):
     id: int
     name: str
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    customer_id: int
+    message: str = Field(min_length=1)
+    history: list[ChatMessage] = Field(default_factory=list)
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    history: list[ChatMessage]

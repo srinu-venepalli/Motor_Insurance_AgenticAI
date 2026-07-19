@@ -261,3 +261,80 @@ def test_graph_escalates_on_complaint_category(session):
 
     assert final_state["category"] == "complaint"
     assert final_state["escalated"] is True
+
+
+def test_graph_adaptive_behaviour_before_and_after_feedback(session):
+    """Phase 7 end-to-end demonstration: the exact same ticket category,
+    the exact same (clean, faithful) draft quality -- but the system's
+    behaviour changes once enough Feedback has accumulated showing agents
+    heavily rewrite this category's drafts. This is the actual 'learn from
+    feedback and change future behaviour' loop, not just data collection.
+    """
+    from customer_support_agent.models import TicketCategory
+    from customer_support_agent.repositories import FeedbackRepository, InteractionRepository
+
+    summarize_payload = {
+        "summary": "Customer asked about their claim status.",
+        "draft_body": "Your claim is currently under review by our claims team.",
+        "cited_clause_ids": [],
+        "needs_escalation": False,
+        "escalation_reason": None,
+    }
+
+    def run_claim_status_ticket(customer, ticket):
+        llm = FakeLLM(
+            [
+                FakeMessage(content="claim_status"),
+                FakeMessage(content="done", tool_calls=[]),
+                FakeMessage(content=json.dumps(summarize_payload)),
+            ]
+        )
+        graph = build_graph(session, llm=llm, embed_fn=fake_embed_fn, index=FakeQueryIndex([]))
+        return graph.invoke(
+            {
+                "ticket_id": ticket.id,
+                "customer_id": customer.id,
+                "ticket_text": "What's the status of my claim?",
+            }
+        )
+
+    # --- BEFORE: no feedback history yet for claim_status -----------------
+    customer, ticket_before = _seed_ticket_with_active_policy(session)
+    state_before = run_claim_status_ticket(customer, ticket_before)
+    session.commit()
+
+    assert state_before["category"] == "claim_status"
+    assert state_before["escalated"] is False  # nothing to adapt to yet
+
+    # --- Accumulate feedback: agents have heavily rewritten past drafts ---
+    # Attributed to a DIFFERENT customer than the one we're testing -- the
+    # adaptive signal is category-wide (any customer's past claim_status
+    # tickets), not customer-specific. Using the same customer would also
+    # push them over the repeat-customer threshold (rule 5), which would
+    # fire first and make this test not actually isolate the adaptive rule.
+    history_customer = CustomerRepository(session).create(
+        name="History Customer", contact_no="+91-9000000999"
+    )
+    session.commit()
+    interactions_repo = InteractionRepository(session)
+    feedback_repo = FeedbackRepository(session)
+    for _ in range(3):
+        t = TicketRepository(session).create(
+            customer_id=history_customer.id, category=TicketCategory.CLAIM_STATUS
+        )
+        session.commit()
+        i = interactions_repo.create(ticket_id=t.id, summary="past ticket", faithfulness_pass=True)
+        session.commit()
+        feedback_repo.create(interaction_id=i.id, edit_distance=150)  # well above the 80 threshold
+        session.commit()
+
+    # --- AFTER: same category, same draft quality, new ticket -------------
+    ticket_after = TicketRepository(session).create(customer_id=customer.id)
+    session.commit()
+    state_after = run_claim_status_ticket(customer, ticket_after)
+    session.commit()
+
+    assert state_after["category"] == "claim_status"
+    assert state_after["faithfulness_pass"] is True  # the draft itself was just as clean
+    assert state_after["escalated"] is True  # but the system now defers to a human
+    assert "Adaptive" in state_after["escalation_reason"]

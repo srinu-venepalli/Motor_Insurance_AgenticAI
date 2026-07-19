@@ -50,6 +50,17 @@ def list_customers() -> list[dict]:
     return _handle("GET", url, resp, started_at)
 
 
+def chat(customer_id: int, message: str, history: list[dict]) -> dict:
+    url = f"{BASE_URL}/chat"
+    started_at = time.perf_counter()
+    resp = requests.post(
+        url,
+        json={"customer_id": customer_id, "message": message, "history": history},
+        timeout=_TIMEOUT_PROCESS,  # may create+process a ticket internally
+    )
+    return _handle("POST", url, resp, started_at)
+
+
 def get_customer(customer_id: int) -> dict:
     url = f"{BASE_URL}/customers/{customer_id}"
     started_at = time.perf_counter()

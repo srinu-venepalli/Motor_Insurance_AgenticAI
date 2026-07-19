@@ -18,18 +18,12 @@ separate means a ticket can exist and be inspected at any stage.
 
 import json
 
-import openai
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from customer_support_agent.api.deps import get_db
 from customer_support_agent.core import get_logger
+from customer_support_agent.core.retry import llm_call_retry
 from customer_support_agent.graph import build_graph
 from customer_support_agent.models import (
     MessageSender,
@@ -60,19 +54,7 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 logger = get_logger(__name__)
 
 
-@retry(
-    # Confirmed via scripts/diagnose_tool_calling.py: this is intermittent
-    # proxy-side flakiness (a brief hiccup between Vocareum and OpenAI),
-    # NOT a structural bug in how we shape tool-calling requests -- four
-    # targeted reproduction attempts (plain call, single tool, two tools +
-    # large payload, final response after both tools resolved) all
-    # succeeded cleanly. Retrying with a bit of runway is the right fix;
-    # a full redesign away from native tool-calling is not warranted.
-    retry=retry_if_exception_type((json.JSONDecodeError, openai.APIError)),
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=2, max=15),
-    reraise=True,
-)
+@llm_call_retry
 def _invoke_graph_with_retry(graph, initial_state: dict, config: dict) -> dict:
     return graph.invoke(initial_state, config=config)
 
@@ -228,6 +210,27 @@ def process_ticket(ticket_id: int, db: Session = Depends(get_db)) -> TicketProce
         # the agent console) -- graph.invoke()'s return value alone is
         # ephemeral, this is the only place it's actually saved.
         messages.add_message(ticket.id, MessageSender.AI_DRAFT, draft_response)
+
+    classified_category = result.get("category")
+    if classified_category:
+        # This was the actual bug behind tickets showing 'Other' even when
+        # classify_ticket correctly determined the real category: that
+        # value was only ever included in this endpoint's response, never
+        # written back to the Ticket row itself. Every ticket is created
+        # with category=OTHER by default (the customer never specifies one
+        # at submission time), so without this, GET /tickets and GET
+        # /tickets/{id} -- which read the persisted column, not the
+        # ephemeral graph result -- would show OTHER regardless of what
+        # the AI actually classified it as.
+        try:
+            ticket.category = TicketCategory(classified_category)
+        except ValueError:
+            logger.warning(
+                "process_ticket: model returned unrecognized category %r for ticket_id=%s, "
+                "leaving existing category unchanged",
+                classified_category,
+                ticket_id,
+            )
 
     return TicketProcessResponse(
         ticket_id=ticket.id,

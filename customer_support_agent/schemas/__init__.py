@@ -1,6 +1,9 @@
 """API request/response schemas."""
 
 from customer_support_agent.schemas.api import (
+    ChatMessage,
+    ChatRequest,
+    ChatResponse,
     CustomerOut,
     InteractionSummary,
     MessageOut,
@@ -14,6 +17,9 @@ from customer_support_agent.schemas.api import (
 )
 
 __all__ = [
+    "ChatMessage",
+    "ChatRequest",
+    "ChatResponse",
     "CustomerOut",
     "InteractionSummary",
     "MessageOut",

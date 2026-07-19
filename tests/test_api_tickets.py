@@ -7,6 +7,7 @@ response shape).
 """
 
 from datetime import date, timedelta
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -152,6 +153,67 @@ def test_process_ticket_not_found_returns_404(client, monkeypatch):
     assert response.status_code == 404
 
 
+class FlakyThenSucceedsGraph:
+    """Simulates the real-world proxy bug: raises json.JSONDecodeError on
+    the first N calls, then returns a valid result -- proves the retry
+    wrapper actually retries rather than just being decorative."""
+
+    def __init__(self, fail_times: int, fixed_result: dict):
+        self.fail_times = fail_times
+        self.fixed_result = fixed_result
+        self.call_count = 0
+
+    def invoke(self, state, config=None):
+        self.call_count += 1
+        if self.call_count <= self.fail_times:
+            raise json.JSONDecodeError("Extra data", "bad json body", 42)
+        return self.fixed_result
+
+
+class AlwaysFailsGraph:
+    def invoke(self, state, config=None):
+        raise json.JSONDecodeError("Extra data", "bad json body", 42)
+
+
+def test_process_ticket_retries_on_transient_json_error_and_succeeds(client, session, monkeypatch):
+    customer = _seed_customer(session)
+    create_resp = client.post(
+        "/tickets", json={"customer_id": customer.id, "ticket_text": "Cracked windscreen?"}
+    )
+    ticket_id = create_resp.json()["ticket_id"]
+
+    flaky_graph = FlakyThenSucceedsGraph(fail_times=2, fixed_result=FIXED_RESULT)
+    monkeypatch.setattr(tickets_module, "build_graph", lambda db: flaky_graph)
+
+    response = client.post(f"/tickets/{ticket_id}/process")
+
+    assert response.status_code == 200
+    assert flaky_graph.call_count == 3  # failed twice, succeeded on the 3rd
+    assert response.json()["category"] == "coverage_question"
+
+
+def test_process_ticket_returns_502_after_exhausting_retries(client, session, monkeypatch):
+    customer = _seed_customer(session)
+    create_resp = client.post(
+        "/tickets", json={"customer_id": customer.id, "ticket_text": "Cracked windscreen?"}
+    )
+    ticket_id = create_resp.json()["ticket_id"]
+
+    monkeypatch.setattr(tickets_module, "build_graph", lambda db: AlwaysFailsGraph())
+
+    response = client.post(f"/tickets/{ticket_id}/process")
+
+    assert response.status_code == 502
+    assert "transient" in response.json()["detail"].lower() or "try again" in response.json()["detail"].lower()
+
+    # No AI_DRAFT message should have been written for a failed run.
+    from customer_support_agent.models import MessageSender
+    from customer_support_agent.repositories import TicketMessageRepository
+
+    thread = TicketMessageRepository(session).get_thread(ticket_id)
+    assert not any(m.sender == MessageSender.AI_DRAFT for m in thread)
+
+
 def test_process_ticket_without_message_returns_400(client, session, monkeypatch):
     """A ticket created directly via the repository (bypassing POST
     /tickets) has no message thread -- process should fail clearly, not
@@ -183,7 +245,8 @@ def test_get_ticket_detail_includes_interactions(client, session):
         ticket_id=ticket_id,
         summary="Answered directly.",
         faithfulness_pass=True,
-        escalated=False,
+        escalated=True,
+        escalation_reason="Repeat customer: 3 tickets opened in the last 30 days (threshold: 2).",
     )
     session.commit()
 
@@ -191,6 +254,9 @@ def test_get_ticket_detail_includes_interactions(client, session):
 
     assert response.status_code == 200
     data = response.json()
+    assert data["interactions"][0]["escalation_reason"] == (
+        "Repeat customer: 3 tickets opened in the last 30 days (threshold: 2)."
+    )
     assert data["customer_name"] == "Rohan Sharma"
     assert len(data["interactions"]) == 1
     assert data["interactions"][0]["summary"] == "Answered directly."
@@ -224,6 +290,50 @@ def test_process_ticket_persists_draft_as_ai_draft_message(client, session, monk
     assert "Yes, covered." in ai_drafts[0].text
 
 
+def test_process_ticket_persists_classified_category_to_ticket_row(client, session, monkeypatch):
+    """Regression test for a real bug: classify_ticket correctly determined
+    the category, but /process only ever included it in this endpoint's
+    own response -- it never wrote it back to the Ticket row. Every ticket
+    is created with category=OTHER by default (the customer never picks
+    one), so GET /tickets/{id} kept showing 'other' regardless of what the
+    AI actually classified, since that endpoint reads the persisted
+    column, not the ephemeral graph result."""
+    customer = _seed_customer(session)
+    create_resp = client.post(
+        "/tickets", json={"customer_id": customer.id, "ticket_text": "Cracked windscreen?"}
+    )
+    ticket_id = create_resp.json()["ticket_id"]
+    assert client.get(f"/tickets/{ticket_id}").json()["category"] == "other"  # default at creation
+
+    fake_graph = FakeGraph(FIXED_RESULT)  # FIXED_RESULT["category"] == "coverage_question"
+    monkeypatch.setattr(tickets_module, "build_graph", lambda db: fake_graph)
+    client.post(f"/tickets/{ticket_id}/process")
+
+    detail = client.get(f"/tickets/{ticket_id}").json()
+    assert detail["category"] == "coverage_question"
+
+    listed = client.get("/tickets").json()
+    this_ticket = next(t for t in listed if t["ticket_id"] == ticket_id)
+    assert this_ticket["category"] == "coverage_question"
+
+
+def test_process_ticket_ignores_unrecognized_category_gracefully(client, session, monkeypatch):
+    customer = _seed_customer(session)
+    create_resp = client.post(
+        "/tickets", json={"customer_id": customer.id, "ticket_text": "Cracked windscreen?"}
+    )
+    ticket_id = create_resp.json()["ticket_id"]
+
+    bad_result = dict(FIXED_RESULT, category="not_a_real_category")
+    monkeypatch.setattr(tickets_module, "build_graph", lambda db: FakeGraph(bad_result))
+
+    response = client.post(f"/tickets/{ticket_id}/process")
+    assert response.status_code == 200  # doesn't crash the whole request
+
+    detail = client.get(f"/tickets/{ticket_id}").json()
+    assert detail["category"] == "other"  # left at its original default, not corrupted
+
+
 # --- GET /tickets (list / queue) -----------------------------------------
 
 
@@ -239,6 +349,60 @@ def test_list_tickets_returns_all_by_default(client, session):
     assert len(data) == 2
     assert data[0]["customer_name"] == "Rohan Sharma"
     assert data[0]["escalated"] is None  # not yet processed
+    assert data[0]["latest_summary"] is None  # not yet processed
+
+
+def test_list_tickets_includes_latest_summary_after_interaction(client, session):
+    customer = _seed_customer(session)
+    create_resp = client.post(
+        "/tickets", json={"customer_id": customer.id, "ticket_text": "Fire damage question"}
+    )
+    ticket_id = create_resp.json()["ticket_id"]
+
+    from customer_support_agent.repositories import InteractionRepository
+
+    InteractionRepository(session).create(
+        ticket_id=ticket_id,
+        summary="Customer asked about fire damage coverage.",
+        faithfulness_pass=True,
+        escalated=False,
+    )
+    session.commit()
+
+    response = client.get("/tickets")
+    data = response.json()
+    assert data[0]["latest_summary"] == "Customer asked about fire damage coverage."
+
+
+def test_list_tickets_filters_by_resolution(client, session, monkeypatch):
+    customer = _seed_customer(session)
+
+    approved_resp = client.post(
+        "/tickets", json={"customer_id": customer.id, "ticket_text": "Approved one"}
+    )
+    rejected_resp = client.post(
+        "/tickets", json={"customer_id": customer.id, "ticket_text": "Rejected one"}
+    )
+    approved_id = approved_resp.json()["ticket_id"]
+    rejected_id = rejected_resp.json()["ticket_id"]
+
+    monkeypatch.setattr(tickets_module, "build_graph", lambda db: FakeGraph(FIXED_RESULT))
+    client.post(f"/tickets/{approved_id}/process")
+    client.post(f"/tickets/{rejected_id}/process")
+
+    client.post(f"/tickets/{approved_id}/approve", json={"resolution": "approved"})
+    client.post(f"/tickets/{rejected_id}/approve", json={"resolution": "rejected"})
+
+    approved_only = client.get("/tickets?resolution=approved").json()
+    rejected_only = client.get("/tickets?resolution=rejected").json()
+
+    assert [t["ticket_id"] for t in approved_only] == [approved_id]
+    assert [t["ticket_id"] for t in rejected_only] == [rejected_id]
+
+
+def test_list_tickets_rejects_invalid_resolution_filter(client):
+    response = client.get("/tickets?resolution=maybe")
+    assert response.status_code == 422
 
 
 def test_list_tickets_filters_by_customer_id(client, session):

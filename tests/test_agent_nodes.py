@@ -17,11 +17,13 @@ from customer_support_agent.graph.nodes import (
     make_summarize_node,
 )
 from customer_support_agent.graph.tools import make_policy_lookup_tool
-from customer_support_agent.models import PolicyStatus
+from customer_support_agent.models import PolicyStatus, TicketCategory
 from customer_support_agent.repositories import (
     AgentRepository,
     CustomerPolicyRepository,
     CustomerRepository,
+    FeedbackRepository,
+    InteractionRepository,
     PolicyDocumentRepository,
     TicketRepository,
 )
@@ -71,6 +73,83 @@ def test_classify_node_falls_back_to_other_on_garbage_output():
     result = node({"ticket_text": "asdkjhaskjdh"})
 
     assert result["category"] == "other"
+
+
+def test_classify_node_handles_title_case_with_spaces():
+    """This is the actual bug that was misclassifying most tickets as
+    'other': the model very naturally answers in human-readable form
+    ('Coverage Question') rather than the literal snake_case value the
+    prompt asked for, and a plain substring match never catches that --
+    space vs underscore -- so it silently fell through to 'other' on
+    nearly every real ticket."""
+    llm = FakeLLM([FakeMessage(content="Coverage Question")])
+    node = make_classify_node(llm)
+
+    result = node({"ticket_text": "Does my policy cover a cracked windscreen?"})
+
+    assert result["category"] == "coverage_question"
+
+
+def test_classify_node_handles_hyphenated_response():
+    llm = FakeLLM([FakeMessage(content="claim-status")])
+    node = make_classify_node(llm)
+
+    result = node({"ticket_text": "What's the status of my claim?"})
+
+    assert result["category"] == "claim_status"
+
+
+def test_classify_node_handles_trailing_punctuation_and_quotes():
+    llm = FakeLLM([FakeMessage(content='"Accident Report."')])
+    node = make_classify_node(llm)
+
+    result = node({"ticket_text": "I was in an accident yesterday."})
+
+    assert result["category"] == "accident_report"
+
+
+def test_classify_node_still_matches_substring_when_wrapped_in_a_sentence():
+    """Fallback path: if the model ignores instructions and wraps the
+    category in a short sentence, substring matching against the
+    normalized text should still catch it."""
+    llm = FakeLLM([FakeMessage(content="This ticket is about a renewal request.")])
+    node = make_classify_node(llm)
+
+    result = node({"ticket_text": "I'd like to renew my policy."})
+
+    assert result["category"] == "renewal"
+
+
+def test_classify_node_parses_json_response():
+    """The primary path this node now uses -- same reliable JSON-response
+    pattern as summarize_and_draft, instead of parsing loose free text."""
+    llm = FakeLLM([FakeMessage(content='{"category": "coverage_question"}')])
+    node = make_classify_node(llm)
+
+    result = node({"ticket_text": "Does my policy cover a cracked windscreen?"})
+
+    assert result["category"] == "coverage_question"
+
+
+def test_classify_node_json_response_normalizes_title_case_value():
+    llm = FakeLLM([FakeMessage(content='{"category": "Claim Status"}')])
+    node = make_classify_node(llm)
+
+    result = node({"ticket_text": "What's the status of my claim?"})
+
+    assert result["category"] == "claim_status"
+
+
+def test_classify_node_handles_bare_json_string_without_crashing():
+    """json.loads('"Accident Report."') is valid JSON (a bare string, not
+    an object) -- this must not crash, and should fall through to the
+    text-parsing fallback instead."""
+    llm = FakeLLM([FakeMessage(content='"Accident Report."')])
+    node = make_classify_node(llm)
+
+    result = node({"ticket_text": "I was in an accident yesterday."})
+
+    assert result["category"] == "accident_report"
 
 
 # --- agent_reasoning (tool-calling loop) --------------------------------
@@ -267,6 +346,33 @@ def test_fetch_customer_context_node_populates_name_and_context(session):
 
     assert result["customer_name"] == "Anita Rao"
     assert result["customer_context"]["has_active_policy"] is True
+    # No category in state (not yet classified in this call) -> no adaptive signal.
+    assert result["category_avg_edit_distance"] is None
+
+
+def test_fetch_customer_context_node_computes_adaptive_signal_from_feedback(session):
+    """This is the actual Phase 7 wiring test: seed enough Feedback rows
+    with a high edit_distance for a category, and confirm
+    fetch_customer_context surfaces the resulting average in state --
+    that's what escalation_gate's adaptive rule reads."""
+    customer = CustomerRepository(session).create(name="Vikram Singh", contact_no="+91-9800000456")
+    tickets_repo = TicketRepository(session)
+    interactions_repo = InteractionRepository(session)
+    feedback_repo = FeedbackRepository(session)
+    session.commit()
+
+    for _ in range(3):
+        t = tickets_repo.create(customer_id=customer.id, category=TicketCategory.CLAIM_STATUS)
+        session.commit()
+        i = interactions_repo.create(ticket_id=t.id, summary="x", faithfulness_pass=True)
+        session.commit()
+        feedback_repo.create(interaction_id=i.id, edit_distance=150)
+        session.commit()
+
+    node = make_fetch_customer_context_node(session, adaptive_min_feedback_samples=3)
+    result = node({"customer_id": customer.id, "category": "claim_status"})
+
+    assert result["category_avg_edit_distance"] == 150.0
 
 
 def test_fetch_customer_context_node_handles_unknown_customer_gracefully(session):
@@ -455,6 +561,47 @@ def test_escalation_gate_ignores_claimed_amount_below_threshold():
     assert make_escalation_gate()(state) == "present"
 
 
+def test_escalation_gate_presents_when_no_adaptive_signal_yet():
+    """The 'before' half of the before/after story: no feedback history
+    exists yet for this category (category_avg_edit_distance is None), so
+    the adaptive rule shouldn't fire even though every other check passes."""
+    state = {
+        "faithfulness_pass": True,
+        "needs_escalation_soft_signal": False,
+        "category": "claim_status",
+        "customer_context": {"has_active_policy": True},
+        "category_avg_edit_distance": None,
+    }
+    assert make_escalation_gate()(state) == "present"
+
+
+def test_escalation_gate_escalates_on_adaptive_high_edit_distance():
+    """The 'after' half: enough feedback has accumulated showing agents
+    heavily rewrite this category's drafts (avg edit distance above the
+    threshold) -- the system should now auto-escalate, even with a clean
+    faithfulness pass and no other trigger."""
+    state = {
+        "faithfulness_pass": True,
+        "needs_escalation_soft_signal": False,
+        "category": "claim_status",
+        "customer_context": {"has_active_policy": True},
+        "category_avg_edit_distance": 150.0,  # above default threshold of 80
+    }
+    assert make_escalation_gate()(state) == "escalate"
+
+
+def test_escalation_gate_adaptive_rule_respects_explicit_threshold_override():
+    state = {
+        "faithfulness_pass": True,
+        "needs_escalation_soft_signal": False,
+        "category": "claim_status",
+        "customer_context": {"has_active_policy": True},
+        "category_avg_edit_distance": 150.0,
+    }
+    # Same data, but a looser explicit threshold should not escalate.
+    assert make_escalation_gate(adaptive_edit_distance_threshold=200)(state) == "present"
+
+
 def test_make_escalation_gate_explicit_override_changes_behavior():
     """Passing an explicit threshold to the factory should change behavior
     independent of whatever settings.max_tickets_per_30_days currently is."""
@@ -622,3 +769,31 @@ def test_escalate_node_repeat_customer_reason_text(session):
 
     assert result["escalated"] is True
     assert "Repeat customer" in result["escalation_reason"]
+
+
+def test_escalate_node_assigns_supervisor_even_at_medium_priority(session):
+    """The fix: a MEDIUM-priority escalation (repeat customer, not a
+    faithfulness failure or high-value claim) should still be assigned to
+    the supervisor, not left unassigned."""
+    ticket = _seed_ticket(session)
+    agents = AgentRepository(session)
+    agents.get_or_create_by_name("Arjun Mehta", role="supervisor")
+    session.commit()
+
+    node = make_escalate_node(session)
+    result = node(
+        {
+            "ticket_id": ticket.id,
+            "summary": "Repeat customer case",
+            "cited_clause_ids": [],
+            "faithfulness_pass": True,  # not a faithfulness failure
+            "category": "coverage_question",
+            "customer_context": {"has_active_policy": True, "tickets_last_30_days": 5},
+        }
+    )
+
+    from customer_support_agent.models import Escalation, EscalationPriority
+
+    escalation = session.query(Escalation).filter_by(id=result["escalation_id"]).one()
+    assert escalation.priority == EscalationPriority.MEDIUM
+    assert escalation.assigned_agent.name == "Arjun Mehta"

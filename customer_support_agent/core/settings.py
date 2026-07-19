@@ -78,6 +78,31 @@ class Settings(BaseSettings):
         description="Name of the seeded agent (see services/seed_data.py) assigned to HIGH priority escalations.",
     )
 
+    # --- Phase 7: adaptive behaviour ---
+    # If a ticket category's average historical edit-distance (how much
+    # human agents have had to rewrite the AI's drafts, from the Feedback
+    # table) exceeds this, new tickets in that category auto-escalate
+    # instead of going through the normal draft flow -- the system "learns"
+    # it's unreliable for that category and defers to a human earlier.
+    adaptive_edit_distance_threshold: float = Field(
+        default=80,
+        description="Average edit distance (characters) above which a category auto-escalates.",
+    )
+    adaptive_min_feedback_samples: int = Field(
+        default=3,
+        description="Minimum feedback rows needed before the adaptive rule activates, to avoid overreacting to one early edit.",
+    )
+
+    # --- Phase 6: customer chat assistant (static account info) ---
+    support_toll_free_number: str = Field(
+        default="1800-XXX-XXXX",
+        description="Placeholder -- update with your real toll-free support number.",
+    )
+    support_email: str = Field(
+        default="support@example-motorinsurance.com",
+        description="Placeholder -- update with your real support email.",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -221,3 +221,83 @@ def test_agent_repository_get_or_create_is_idempotent(session):
     second = repo.get_or_create_by_name("Priya Menon")
     session.commit()
     assert first.id == second.id
+
+
+def test_average_edit_distance_returns_none_below_min_samples(session):
+    customer, _, policy = _seed_customer_with_active_policy(session)
+    tickets = TicketRepository(session)
+    interactions = InteractionRepository(session)
+    feedback = FeedbackRepository(session)
+
+    ticket = tickets.create(
+        customer_id=customer.id, customer_policy_id=policy.id, category=TicketCategory.CLAIM_STATUS
+    )
+    session.commit()
+    interaction = interactions.create(ticket_id=ticket.id, summary="x", faithfulness_pass=True)
+    session.commit()
+    feedback.create(interaction_id=interaction.id, edit_distance=200)
+    session.commit()
+
+    # Only 1 sample recorded, default min_samples=3 -- should be None, not
+    # overreact to a single heavily-edited draft.
+    avg = feedback.average_edit_distance_for_category(TicketCategory.CLAIM_STATUS, min_samples=3)
+    assert avg is None
+
+
+def test_average_edit_distance_computes_correctly_once_enough_samples(session):
+    customer, _, policy = _seed_customer_with_active_policy(session)
+    tickets = TicketRepository(session)
+    interactions = InteractionRepository(session)
+    feedback = FeedbackRepository(session)
+
+    edit_distances = [100, 200, 300]
+    for ed in edit_distances:
+        ticket = tickets.create(
+            customer_id=customer.id,
+            customer_policy_id=policy.id,
+            category=TicketCategory.CLAIM_STATUS,
+        )
+        session.commit()
+        interaction = interactions.create(ticket_id=ticket.id, summary="x", faithfulness_pass=True)
+        session.commit()
+        feedback.create(interaction_id=interaction.id, edit_distance=ed)
+        session.commit()
+
+    avg = feedback.average_edit_distance_for_category(TicketCategory.CLAIM_STATUS, min_samples=3)
+    assert avg == 200  # (100 + 200 + 300) / 3
+
+
+def test_average_edit_distance_is_scoped_to_the_given_category(session):
+    customer, _, policy = _seed_customer_with_active_policy(session)
+    tickets = TicketRepository(session)
+    interactions = InteractionRepository(session)
+    feedback = FeedbackRepository(session)
+
+    # 3 samples for CLAIM_STATUS (high edit distance)...
+    for _ in range(3):
+        t = tickets.create(
+            customer_id=customer.id,
+            customer_policy_id=policy.id,
+            category=TicketCategory.CLAIM_STATUS,
+        )
+        session.commit()
+        i = interactions.create(ticket_id=t.id, summary="x", faithfulness_pass=True)
+        session.commit()
+        feedback.create(interaction_id=i.id, edit_distance=500)
+        session.commit()
+
+    # ...and 3 for COVERAGE_QUESTION (low edit distance) -- must not blend.
+    for _ in range(3):
+        t = tickets.create(
+            customer_id=customer.id,
+            customer_policy_id=policy.id,
+            category=TicketCategory.COVERAGE_QUESTION,
+        )
+        session.commit()
+        i = interactions.create(ticket_id=t.id, summary="x", faithfulness_pass=True)
+        session.commit()
+        feedback.create(interaction_id=i.id, edit_distance=10)
+        session.commit()
+
+    assert feedback.average_edit_distance_for_category(TicketCategory.CLAIM_STATUS) == 500
+    assert feedback.average_edit_distance_for_category(TicketCategory.COVERAGE_QUESTION) == 10
