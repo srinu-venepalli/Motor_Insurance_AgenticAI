@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langsmith import traceable
 from sqlalchemy.orm import Session
 
 from customer_support_agent.core import get_logger, settings
@@ -59,6 +60,20 @@ def _build_system_prompt(customer_name: str) -> str:
         "is retrieved, say you're not sure), and create a new support ticket when the "
         "customer needs a real coverage or claim determination, or anything requiring "
         "human review. "
+        "When deciding what to do: use policy_lookup and answer directly for general "
+        "questions about what the policy says or how a coverage rule works (e.g. 'does "
+        "my policy cover X', 'how does the NCB work', 'am I allowed to claim again'), "
+        "citing only what the retrieved clauses actually say. If their situation seems "
+        "to genuinely need a real coverage/claim determination or human review, do NOT "
+        "create a ticket on your own judgment -- tell them so and ask first (e.g. "
+        "'Would you like me to open a support ticket so our team can review your "
+        "specific case?'), and only call create_support_ticket once they've actually "
+        "said yes or asked you to open one. Never create a ticket the customer didn't "
+        "ask for or agree to. "
+        "Whenever you do call create_support_ticket, ALWAYS state the exact ticket "
+        "number from its result in your reply (e.g. 'I've created ticket #24 for "
+        "you...') -- never tell the customer a ticket was created without saying which "
+        "one. "
         "You do NOT make final coverage or claim decisions yourself -- for anything "
         "needing a real determination, create a support ticket so a human agent can "
         "review it properly, rather than promising or denying coverage in this chat. "
@@ -67,6 +82,7 @@ def _build_system_prompt(customer_name: str) -> str:
     )
 
 
+@traceable(name="chat_turn", run_type="chain")
 def run_chat_turn(
     session: Session,
     customer_id: int,
@@ -83,6 +99,15 @@ def run_chat_turn(
     {"role": "user"|"assistant", "content": str} dicts. Returns
     (assistant_reply, updated_history) -- the caller (the API endpoint, and
     ultimately the Streamlit session state) owns persisting/resetting it.
+
+    @traceable gives this the same LangSmith identifiability the ticket
+    pipeline already has (graph.invoke()'s run_name=f"ticket-{ticket.id}")
+    -- without it, each nested LLM/tool call showed up in LangSmith as its
+    own top-level trace named after the tool itself (create_support_ticket,
+    list_my_tickets, ...), with no way to see which calls belonged to the
+    same customer turn. Pass a per-call name via langsmith_extra at the
+    call site (see api/chat.py) for a customer-specific label, mirroring
+    "ticket-N".
     """
     llm = llm or get_llm()
     tools = make_chat_tools(session, customer_id, embed_fn=embed_fn, index=index)

@@ -66,10 +66,12 @@ def make_chat_tools(session: Session, customer_id: int, embed_fn=None, index=Non
     @tool
     def create_support_ticket(issue_description: str) -> dict:
         """Create a new support ticket describing the customer's issue.
-        Use this for anything needing a real coverage/claim determination
-        or human review -- this tool does NOT answer the question itself,
-        it opens a ticket and kicks off the normal AI-draft-then-human-
-        review process."""
+        Only call this after the customer has explicitly asked you to
+        open/file/create a ticket, or has confirmed "yes" after you offered
+        to open one -- never on your own judgment alone, even if their
+        situation clearly needs a real coverage/claim determination or
+        human review. If it seems like they need one, tell them so and ask
+        first; only call this tool once they've actually agreed."""
         ticket_repo = TicketRepository(session)
         message_repo = TicketMessageRepository(session)
 

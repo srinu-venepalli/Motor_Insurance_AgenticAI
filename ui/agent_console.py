@@ -256,7 +256,7 @@ def render(placeholder=None) -> None:
             )
             st.caption(
                 "Edits you make here are sent as-is -- the difference from the original AI "
-                "draft is recorded for review (Phase 7 feedback)."
+                "draft is recorded for review."
             )
 
             col_send, col_reject, col_reprocess = st.columns(3)

@@ -6,6 +6,8 @@ with each request, and gets back the updated history plus the new reply.
 See graph/chat_agent.py for the actual reasoning/memory design notes.
 """
 
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -22,7 +24,24 @@ logger = get_logger(__name__)
 
 @llm_call_retry
 def _run_chat_turn_with_retry(db, customer_id, customer_name, history, message):
-    return run_chat_turn(db, customer_id, customer_name, history, message)
+    return run_chat_turn(
+        db,
+        customer_id,
+        customer_name,
+        history,
+        message,
+        # Gives this turn a per-customer LangSmith trace name, mirroring
+        # the ticket pipeline's run_name=f"ticket-{ticket.id}" -- without
+        # this, every LLM/tool call inside run_chat_turn showed up in
+        # LangSmith as its own top-level trace named after the callable
+        # itself (create_support_ticket, list_my_tickets, ...), with no way
+        # to see which calls belonged to the same customer's turn.
+        langsmith_extra={
+            "name": f"chat-customer-{customer_id}-{int(time.time())}",
+            "tags": ["chat"],
+            "metadata": {"customer_id": customer_id},
+        },
+    )
 
 
 @router.post("", response_model=ChatResponse)
